@@ -453,13 +453,27 @@ Mirror.prototype.setElement = function (el, serialized) {
 };
 
 Mirror.prototype.setAttributes = function (el, attrs) {
+  var attrLength = 0;
   for (var i in attrs) {
     if (! attrs.hasOwnProperty(i)) {
       continue;
     }
+    attrLength++;
     el.setAttribute(i, attrs[i]);
   }
-  // FIXME: doesn't delete attributes
+  if (el.attributes.length > attrLength) {
+    // There must be an extra attribute to be deleted
+    var toDelete = [];
+    for (i=0; i<el.attributes.length; i++) {
+      if (! attrs.hasOwnProperty(el.attributes[i].name)) {
+        toDelete.push(el.attributes[i].name);
+      }
+    }
+    for (i=0; i<toDelete.length; i++) {
+      console.log('removing attr', toDelete[i]);
+      el.removeAttribute(toDelete[i]);
+    }
+  }
 };
 
 Mirror.prototype.setBase = function (baseHref) {
@@ -638,14 +652,18 @@ function Panel(connection, isMaster) {
   this.isMaster = isMaster;
   this.chatMessages = [];
   var self = this;
-  if (! document.body) {
-    window.addEventListener('load', function () {
-      self.initPanel();
-    }, false);
-  }
   this._boundHighlightListener = function (event) {
     return self.highlightListener(event);
   };
+  if (! document.body) {
+    console.log('event listener');
+    window.addEventListener('load', function () {
+      self.initPanel();
+    }, false);
+  } else {
+  console.log('loading panel');
+    this.initPanel();
+  }
 }
 
 Panel.prototype.initPanel = function () {
@@ -661,7 +679,7 @@ Panel.prototype.initPanel = function () {
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
     + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00;">&#9675;</span>'
     + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + master.destination + '">share</a></div>' : '')
+    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.connection.destination + '">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
     + '<input type="text" id="jsmirror-input" style="width: 100%">'
     + '</div>';
@@ -757,6 +775,14 @@ if (window.runBookmarklet) {
   // FIXME: no hardcode:
   var master = new Master(destination + '/foo');
   master.poll();
+}
+
+function doOnLoad(func) {
+  if (document.readyState == 'complete') {
+    func();
+  } else {
+    window.addEventListener('load', func, false);
+  }
 }
 
 function getNearestElement(pixelOffset, roundDown) {

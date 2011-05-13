@@ -1,0 +1,16 @@
+* Inject the mirroring into iframes, not just top frame
+
+* On github.com, when it has a popup with a shadowed out background,
+  it doesn't show the dialog properly or kill the shadow.
+
+* I think this (and maybe a weird Facebook thing) is because you can
+  change the innerHeight etc. of an element without changing
+  el.style.height -- and so it's not visible to us that you've
+  overridden something on the element.  But... the activation of the
+  overlay works, just not the disabling.
+
+* Remove deleted attributes on mirror.
+
+* When a change has been made to the page that removes CSS, it is
+  necessary to do something special; perhaps to specifically remove
+  the CSS, or to reload the page entirely.

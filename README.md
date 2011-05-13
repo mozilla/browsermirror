@@ -42,6 +42,6 @@ A web application *written to be shared* can in many ways be more elegant than w
 
 One could imagine a formal way for a web page to indicate that it is shareable (and how), and for this to be a fallback when the page doesn't have a native sense of session sharing.
 
-##x Permissions
+## Permissions
 
 Right now the mirror client basically has permission to do anything (though certain things like file selection are not possible).  But it would be easy to give more limited permissions, for instance only permission to view a session, or to require confirmation before some actions take place (like browsing to another URL).  With a plugin it would also be possible to allow the remote client to select a file (possibly using for tech support).
