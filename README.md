@@ -1,10 +1,10 @@
-= Browser Mirror
+# Browser Mirror
 
 This is an experiment in session sharing through the browser.
 
 The goal is primarily to explore the feasibility of a particular technique; it is well possible that this will not be a feasible manner of session sharing, but exactly *why* should be interesting.
 
-== Implementation
+## Implementation
 
 This is not cooperative sharing, as in the case of Etherpad or Google Wave, but rather a master/client relationship.  The master browser is the active browser, and runs all the Javascript.  The mirror receives all the HTML (i.e., DOM elements) but no Javascript.  Anything that *happens* happens on the master browser and is relayed to the mirror.
 
@@ -18,13 +18,13 @@ Notable iframes require additional work, but only insofar as compound pages must
 
 Flash is a complete no-go.
 
-== Communication
+## Communication
 
 In addition to just sharing the same page, direct communication will be appropriate.  Simple chat is implemented, as is the concept of highlighting an element.  Because the two browsers are not necessarily rendering the same way (e.g., zoom levels, browser screen size, etc) all these operations have to happen on a DOM level.  I.e., you can't point at a *place*, you can only point at an *element* (though we find the element closest to your place, and possibly we could use an offset to get finer resolution).
 
-There is a rough implementation of screen position, but I haven't figured out how to present that.  Also noting changes would probably be useful, so you can see that the other user is changing something (potentially off-screen for you).
-
-== Bookmarklet or Plugin
+There is a rough implementation of screen position, but I haven't figured out how to present that.  Also noting changes would probably be useful, so you can see that the other user is changing something (potentially off-screen for you)
+.
+## Bookmarklet or Plugin
 
 Right now this is implemented as a bookmarklet.  This is relatively easy to work with and largely works.  It cannot feasibly handle iframes, nor can it handle the transition to another page (i.e., if you click a link you will lose your sharing).
 
@@ -32,16 +32,16 @@ Ultimately the master would probably be best as a plugin.  This could manage the
 
 The mirror should probably not require any special browser functionality.  This would also make it easier to share a session with any user, regardless of what they are using.
 
-== Initiating the sharing
+## Initiating the sharing
 
 Right now you are given a URL which the mirror user should go to, starting the sharing session.  Later it's possible F1 or an Open Web App service could facilitate the starting of a shared session, utilizing things like your social contacts.  This work seems to be progressing reasonably elsewhere, so this project won't attempt anything fancy.
 
-== Native sharing
+## Native sharing
 
 A web application *written to be shared* can in many ways be more elegant than what is implemented here.  For instance, it would be superior to share a Google Doc using their built-in sharing facilities than to use this technique.  The reliability of course will be much higher right now, but even if this project worked exactly as intended it would still be better to use the first-class editing concepts built into the web application, which understand intention far better than this project can.
 
 One could imagine a formal way for a web page to indicate that it is shareable (and how), and for this to be a fallback when the page doesn't have a native sense of session sharing.
 
-== Permissions
+##x Permissions
 
 Right now the mirror client basically has permission to do anything (though certain things like file selection are not possible).  But it would be easy to give more limited permissions, for instance only permission to view a session, or to require confirmation before some actions take place (like browsing to another URL).  With a plugin it would also be possible to allow the remote client to select a file (possibly using for tech support).
