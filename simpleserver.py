@@ -137,4 +137,4 @@ if __name__ == '__main__':
     map = URLMap()
     map['/share'] = add_cors_headers(app)
     map['/'] = StaticURLParser(os.path.join(here))
-    serve(map)
+    serve(map, host='0.0.0.0')

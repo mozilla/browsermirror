@@ -94,7 +94,7 @@ Master.prototype.dispatchEvents = function (events) {
       log(INFO, 'Received event:', events[i], 'target', event.target);
       this.sendEvent(event, events[i].target);
     } else if (events[i].jsmirrorEvent === 'change') {
-      log(INFO, 'Received change:', events[i], 'target', event.target);
+      log(INFO, 'Received change:', events[i], 'target', events[i].target);
       this.sendChange(events[i]);
     } else if (events[i].jsmirrorEvent == 'message') {
       log(INFO, 'Received chat message:', events[i].messages);
@@ -104,7 +104,9 @@ Master.prototype.dispatchEvents = function (events) {
     } else if (events[i].jsmirrorEvent == 'highlight') {
       log(INFO, 'Received highlight:', events[i].target.jsmirrorId);
       var el = this.getElement(events[i].target.jsmirrorId);
-      temporaryHighlight(el);
+      if (el) {
+        temporaryHighlight(el);
+      }
     }
   }
 };
@@ -321,6 +323,9 @@ Master.prototype.serializeAttributes = function (el) {
       }
     }
   }
+  if (el.tagName == 'TEXTAREA') {
+    attrs.value = el.value;
+  }
   return attrs;
 };
 
@@ -343,6 +348,7 @@ function Mirror(source) {
   };
   this.lastModified = null;
   this.panel = new Panel(this, false);
+  this.lastHref = null;
 }
 
 Mirror.prototype.getDoc = function (onsuccess) {
@@ -381,6 +387,9 @@ Mirror.prototype.poll = function (period) {
 };
 
 Mirror.prototype.setDoc = function (doc) {
+  if (doc.href && this.lastHref !== null && doc.href != this.lastHref) {
+    location.reload();
+  }
   if (doc.head) {
     this.setElement(document.head, doc.head);
   }
@@ -403,7 +412,9 @@ Mirror.prototype.setDoc = function (doc) {
   }
   if (doc.highlightElement) {
     var el = this.getElementById(document.body, doc.highlightElement);
-    temporaryElementHighlight(el);
+    if (el) {
+      temporaryHighlight(el);
+    }
   }
 };
 
@@ -460,6 +471,9 @@ Mirror.prototype.setAttributes = function (el, attrs) {
     }
     attrLength++;
     el.setAttribute(i, attrs[i]);
+    if (i == 'value') {
+      el.value = attrs[i];
+    }
   }
   if (el.attributes.length > attrLength) {
     // There must be an extra attribute to be deleted
@@ -615,6 +629,7 @@ Mirror.prototype.sendEvent = function (event) {
 };
 
 Mirror.prototype.changeEvent = function (event) {
+  console.log('got change', event, event.target, event.target.value);
   var msg = {
     jsmirrorEvent: 'change',
     target: event.target.jsmirrorId,
@@ -675,6 +690,7 @@ Panel.prototype.initPanel = function () {
   this.box.style.right = '0.5em';
   this.box.style.height = '10em';
   this.box.style.width = '7em';
+  this.box.style.zIndex = '1000';
   this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000">'
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
     + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00;">&#9675;</span>'
