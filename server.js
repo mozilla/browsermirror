@@ -76,12 +76,12 @@ io.on('connection', function (client) {
     console.info('received message', client.sessionId, displayMsg);
     if (msg.subscribe && ! client.channel) {
       // FIXME: check if already subscribed
-      console.info('subscribing', client.sessionId, msg.subscribe, channels[msg.subscribe]);
       client.channel = msg.subscribe;
       channelsBySessionId[client.sessionId] = client.channel;
       if (! (client.channel in channels)) {
         channels[client.channel] = [];
       }
+      console.info('subscribing', client.sessionId, msg.subscribe, channels[msg.subscribe].length);
       channels[client.channel].push(client);
     }
     if (! client.channel) {
