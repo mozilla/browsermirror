@@ -1,5 +1,5 @@
 VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; ERROR = 50; CRITICAL = 60;
-LOG_LEVEL = INFO;
+LOG_LEVEL = DEBUG;
 
 function log(level) {
   if (level < LOG_LEVEL) {
@@ -20,106 +20,139 @@ function log(level) {
   console[method].apply(console, args);
 }
 
+function Connection(server, channel, receiver) {
+  if (this === window) {
+    throw 'You forgot new';
+  }
+  var hostname, port;
+  if (server.indexOf('//') != -1) {
+    hostname = server.substr(server.indexOf('//')+2);
+  } else {
+    hostname = server;
+  }
+  if (hostname.indexOf(':') != -1) {
+    port = hostname.substr(hostname.indexOf(':')+1);
+    hostname = hostname.substr(0, hostname.indexOf(':'));
+  } else {
+    port = 80;
+  }
+  this.receiver = receiver;
+  this.socket = new io.Socket(hostname, {port: port, rememberTransport: false
+    //,transports: ['flashsocket']
+  });
+  this.socket.connect();
+  // Work around a bug with WebSocket.__initialize not being called:
+  if (! document.getElementById('webSocketFlash')) {
+    console.log('initing');
+    setTimeout(function () {WebSocket.__initialize();}, 500);
+  }
+  this.channel = channel;
+  this.socket.send({subscribe: channel, hello: true});
+  console.log('created socket', this.socket);
+  var self = this;
+  this.socket.on('connect', function () {
+    //self.socket.send({subscribe: channel});
+  });
+  // FIXME: some sort of queue?
+  // FIXME: handle reconnect_failed event
+  this.socket.on('message', function (msg) {
+    // FIXME: for some reason I'm getting multi-encoding strings?
+    while (typeof msg == 'string') {
+      msg = JSON.parse(msg);
+    }
+    self.receiver.message(msg);
+  });
+}
+
+Connection.prototype.send = function (message) {
+  message.subscribe = this.channel;
+  console.log('sending message', message);
+  message = JSON.stringify(message);
+  this.socket.send(message);
+};
+
 function makeId() {
   return 'el' + (arguments.callee.counter++);
 }
 makeId.counter=0;
 
-function Master(destination) {
+function Master(server, channel) {
   if (this === window) {
     throw 'You forgot new';
   }
-  this.destination = destination;
+  this.connector = new Connection(server, channel, this);
+  this.channel = channel;
+  this.shareUrl = server + '/view/' + channel;
   this.allElements = {};
   this.lastSentDoc = null;
   this.panel = new Panel(this, true);
   this.highlightElementId = null;
+  var self = this;
+  this._boundSendDoc = function (onsuccess) {
+    return self.sendDoc(onsuccess);
+  };
+  setInterval(this._boundSendDoc, 1000);
 }
 
+Master.prototype.message = function (msg) {
+  this.dispatchEvent(msg);
+};
+
+Master.prototype.send = function (msg) {
+  console.log('sending message', msg);
+  this.connector.send(msg);
+};
+
 Master.prototype.notifyMessage = function () {
-  // We'll just send it when we get around to it
+  this.send({chatMessages: this.panel.chatMessages});
+  this.panel.chatMessages = [];
 };
 
 Master.prototype.sendHighlight = function (jsmirrorId) {
-  this.highlightElementId = jsmirrorId;
+  this.send({highlight: jsmirrorId});
 };
 
 Master.prototype.sendDoc = function (onsuccess) {
   var self = this;
-  var data = JSON.stringify(this.serializeDocument());
+  var data = this.serializeDocument();
+  var cacheData = JSON.stringify(data);
   var req;
-  if (data !== this.lastSentDoc) {
+  if (cacheData !== this.lastSentDoc) {
     log(DEBUG, 'Sending DOM updates');
-    req = new XMLHttpRequest();
-    req.open('POST', this.destination);
-    req.onreadystatechange = function () {
-      if (req.readyState != 4) {
-        return;
-      }
-      var body = JSON.parse(req.responseText || '[]');
-      if (body && body.length) {
-        self.dispatchEvents(body);
-      }
-      if (onsuccess) {
-        onsuccess();
-      }
-    };
-    req.send(data);
-    this.lastSentDoc = data;
+    this.send({doc: data});
+    this.lastSentDoc = cacheData;
   } else {
-    // Still pick up updates from clients
-    log(DEBUG, 'No new DOM updates to send');
-    req = new XMLHttpRequest();
-    req.open('GET', this.destination + '?getreturn');
-    req.onreadystatechange = function () {
-      if (req.readyState != 4) {
-        return;
-      }
-      var body = JSON.parse(req.responseText || '[]');
-      if (body && body.length) {
-        self.dispatchEvents(body);
-      }
-      if (onsuccess) {
-        onsuccess();
-      }
-    };
-    req.send();
+    log(VERBOSE, 'skipping DOM updates, no change');
   }
 };
 
-Master.prototype.dispatchEvents = function (events) {
-  for (var i=0; i<events.length; i++) {
-    if (events[i].jsmirrorEvent === 'general') {
-      var event = this.deserializeEvent(events[i]);
-      log(INFO, 'Received event:', events[i], 'target', event.target);
-      this.sendEvent(event, events[i].target);
-    } else if (events[i].jsmirrorEvent === 'change') {
-      log(INFO, 'Received change:', events[i], 'target', events[i].target);
-      this.sendChange(events[i]);
-    } else if (events[i].jsmirrorEvent == 'message') {
-      log(INFO, 'Received chat message:', events[i].messages);
-      for (var j=0; j<events[i].messages.length; j++) {
-        this.panel.displayMessage(events[i].messages[j], false);
-      }
-    } else if (events[i].jsmirrorEvent == 'highlight') {
-      log(INFO, 'Received highlight:', events[i].target.jsmirrorId);
-      var el = this.getElement(events[i].target.jsmirrorId);
-      if (el) {
-        temporaryHighlight(el);
-      }
+Master.prototype.dispatchEvent = function (event) {
+  log(DEBUG, 'got', typeof event, event, !!event.chatMessages);
+  if (event.event) {
+    var realEvent = this.deserializeEvent(event.event);
+    this.sendEvent(realEvent, realEvent.target);
+  }
+  if (event.change) {
+    log(INFO, 'Received change:', event.change, 'target', event.change.target);
+    this.sendChange(event.change);
+  }
+  if (event.chatMessages) {
+    log(INFO, 'Received chat message:', event.chatMessages);
+    for (var j=0; j<event.chatMessages.length; j++) {
+      this.panel.displayMessage(event.chatMessages[j], false);
     }
   }
-};
-
-Master.prototype.poll = function (period) {
-  var self = this;
-  period = period || 1000;
-  function runPoll() {
-    self.sendDoc(function () {
-      setTimeout(runPoll, period);
-    });
+  if (event.highlight) {
+    log(INFO, 'Received highlight:', event.highlight);
+    var el = this.getElement(event.highlight);
+    if (el) {
+      temporaryHighlight(el);
+    }
   }
-  runPoll();
+  if (event.hello) {
+    // Make sure to send the doc again:
+    this.lastSentDoc = null;
+  }
 };
 
 Master.prototype.deserializeEvent = function (event) {
@@ -264,10 +297,8 @@ Master.prototype.serializeDocument = function () {
     head: this.serializeElement(document.head),
     body: this.serializeElement(document.body),
     hash: location.hash || "",
-    chatMessages: this.panel.chatMessages,
     highlightElement: this.highlightElementId
   };
-  this.panel.chatMessages = [];
   this.highlightElementId = null;
   return result;
 };
@@ -334,11 +365,11 @@ Master.prototype.serializeAttributes = function (el) {
  The mirror/client
  */
 
-function Mirror(source) {
+function Mirror(server, channel) {
   if (this === window) {
     throw 'You forgot new';
   }
-  this.source = source;
+  this.connector = new Connection(server, channel, this);
   var self = this;
   this._boundCatchEvent = function (event) {
     return self.catchEvent(event);
@@ -351,39 +382,17 @@ function Mirror(source) {
   this.lastHref = null;
 }
 
-Mirror.prototype.getDoc = function (onsuccess) {
-  var self = this;
-  var req = new XMLHttpRequest();
-  var source = this.source;
-  if (this.lastModified) {
-    source += '&if_modified_since=' + this.lastModified;
+Mirror.prototype.message = function (event) {
+  console.log('got message', event);
+  if (event.doc) {
+    this.setDoc(event.doc);
   }
-  req.open('GET', source);
-  req.onreadystatechange = function () {
-    if (req.readyState != 4) {
-      return;
+  if (event.chatMessages) {
+    log(INFO, 'Received chat message:', events[i].chatMessages);
+    for (var j=0; j<events[i].chatMessages.length; j++) {
+      this.panel.displayMessage(events[i].chatMessages[j], false);
     }
-    var data = JSON.parse(req.responseText);
-    if (data !== null) {
-      self.lastModified = data.lastModified;
-      self.setDoc(data);
-    }
-    if (onsuccess) {
-      onsuccess();
-    }
-  };
-  req.send();
-};
-
-Mirror.prototype.poll = function (period) {
-  var self = this;
-  period = period || 1000;
-  function runPoll() {
-    self.getDoc(function () {
-      setTimeout(runPoll, period);
-    });
   }
-  runPoll();
 };
 
 Mirror.prototype.setDoc = function (doc) {
@@ -607,7 +616,7 @@ Mirror.prototype.catchEvent = function (event) {
     log(INFO, 'keypress', event.charCode, event.keyCode, event.target);
   }
   var serialized = this.serializeEvent(event);
-  this.sendEvent(serialized);
+  this.connector.send({event: serialized});
   // Maybe should check event.cancelable -- stopPropagation doesn't mean anything if
   // that's not true
   var tagName = event.target.tagName;
@@ -621,38 +630,21 @@ Mirror.prototype.catchEvent = function (event) {
   return true;
 };
 
-Mirror.prototype.sendEvent = function (event) {
-  var req = new XMLHttpRequest();
-  log(INFO, 'Sending event', event);
-  req.open('POST', this.source + '&return');
-  req.send(JSON.stringify([event]));
-};
-
 Mirror.prototype.changeEvent = function (event) {
   console.log('got change', event, event.target, event.target.value);
-  var msg = {
-    jsmirrorEvent: 'change',
-    target: event.target.jsmirrorId,
-    value: event.target.value
-  };
-  this.sendEvent(msg);
+  this.connector.send(
+    {change: {target: event.target.jsmirrorId, value: event.target.value}});
 };
 
 Mirror.prototype.notifyMessage = function () {
-  var msg = {
-    jsmirrorEvent: 'message',
-    messages: this.panel.chatMessages
-  };
+  this.connector.send(
+    {chatMessages: this.panel.chatMessages});
   this.panel.chatMessages = [];
-  this.sendEvent(msg);
 };
 
 Mirror.prototype.sendHighlight = function (jsmirrorId) {
-  var msg = {
-    jsmirrorEvent: 'highlight',
-    target: {jsmirrorId: jsmirrorId}
-  };
-  this.sendEvent(msg);
+  this.connector.send(
+    {highlight: jsmirrorId});
 };
 
 /************************************************************
@@ -695,7 +687,7 @@ Panel.prototype.initPanel = function () {
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
     + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00;">&#9675;</span>'
     + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.connection.destination + '">share</a></div>' : '')
+    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.connection.shareUrl + '">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
     + '<input type="text" id="jsmirror-input" style="width: 100%">'
     + '</div>';
@@ -785,12 +777,16 @@ function temporaryHighlight(el) {
   }, 5000);
 };
 
-if (window.runBookmarklet) {
-  var destination = window.runBookmarklet;
-  delete window.runBookmarklet;
-  // FIXME: no hardcode:
-  var master = new Master(destination + '/foo');
-  master.poll();
+var master;
+function checkBookmarklet() {
+  if (window.runBookmarklet) {
+    doOnLoad(function () {
+      var destination = window.runBookmarklet.app;
+      delete window.runBookmarklet;
+      // FIXME: don't hardcode:
+      master = new Master(destination, generateToken());
+    });
+  }
 }
 
 function doOnLoad(func) {
@@ -895,4 +891,14 @@ function iterNodes(start) {
     }
     return result;
   };
+}
+
+TOKEN_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+function generateToken() {
+  var s = '';
+  for (var i=0; i<10; i++) {
+    s += TOKEN_CHARS.charAt(Math.random() * TOKEN_CHARS.length);
+  }
+  return s;
 }

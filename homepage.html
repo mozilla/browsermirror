@@ -1,0 +1,31 @@
+<html>
+ <head>
+  <title>Browser Mirror</title>
+ </head>
+ <body>
+  <h1>Browser Mirror</h1>
+
+  <div>Browser Mirror is an exciting new way to collaborate on the web!
+  Blah blah blah.</div>
+
+  <div>To use it drag this into your bookmarks, and use it to share the
+  page you are on.  (If you go to a new page you have to re-share it!)
+  </div>
+
+  <h2><a href="javascript:(function () {window.WEB_SOCKET_SWF_LOCATION = '_WEB_SOCKET_';window.runBookmarklet = {app: '_SERVER_'};var n = 'jsmirror-script';var s = document.getElementById(n);if (s)  document.body.removeChild(s);s = document.createElement('script');s.src = '_JSMIRROR_';s.id = n;document.body.appendChild(s);})()">jsmirror</a></h2>
+  <!-- Source:
+(function () {
+window.WEB_SOCKET_SWF_LOCATION = '_WEB_SOCKET_';
+window.runBookmarklet = {app: '_SERVER_'};
+var n = 'jsmirror-script';
+var s = document.getElementById(n);
+if (s)
+  document.body.removeChild(s);
+s = document.createElement('script');
+s.src = '_JSMIRROR_';
+s.id = n;
+document.body.appendChild(s);
+})()
+  -->
+ </body>
+</html>
