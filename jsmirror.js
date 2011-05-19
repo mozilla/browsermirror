@@ -2,6 +2,9 @@ VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; ERROR = 50; CRITICAL = 60;
 LOG_LEVEL = DEBUG;
 
 function log(level) {
+  if (typeof console == 'undefined') {
+    return;
+  }
   if (level < LOG_LEVEL) {
     return;
   }
@@ -38,17 +41,17 @@ function Connection(server, channel, receiver) {
   }
   this.receiver = receiver;
   this.socket = new io.Socket(hostname, {port: port, rememberTransport: false
-    //,transports: ['flashsocket']
+					 ,transports: ['websocket', 'xhr-polling']
   });
   this.socket.connect();
   // Work around a bug with WebSocket.__initialize not being called:
   if (! document.getElementById('webSocketFlash')) {
-    console.log('initing');
+    log(DEBUG, 'initing WebSocket');
     setTimeout(function () {WebSocket.__initialize();}, 500);
   }
   this.channel = channel;
   this.socket.send({subscribe: channel, hello: true});
-  console.log('created socket', this.socket);
+  log(DEBUG, 'created socket', this.socket);
   var self = this;
   this.socket.on('connect', function () {
     //self.socket.send({subscribe: channel});
@@ -66,7 +69,7 @@ function Connection(server, channel, receiver) {
 
 Connection.prototype.send = function (message) {
   message.subscribe = this.channel;
-  console.log('sending message', message);
+  log(INFO, 'sending message', message);
   message = JSON.stringify(message);
   this.socket.send(message);
 };
@@ -99,7 +102,7 @@ Master.prototype.message = function (msg) {
 };
 
 Master.prototype.send = function (msg) {
-  console.log('sending message', msg);
+  log(INFO, 'sending message', msg);
   this.connector.send(msg);
 };
 
@@ -188,7 +191,7 @@ Master.prototype.sendEvent = function (event, target) {
   log(INFO, 'Throwing internal event', event.type, event, target);
   window.gt = target;
   if (target && ! target.dispatchEvent) {
-    console.log('huh', event, target, target===window);
+    log(WARN, 'huh', event, target, target===window);
     target = window;
   }
   if (target) {
@@ -383,7 +386,7 @@ function Mirror(server, channel) {
 }
 
 Mirror.prototype.message = function (event) {
-  console.log('got message', event);
+  log(DEBUG, 'got message', JSON.stringify(event).substr(0, 70));
   if (event.doc) {
     this.setDoc(event.doc);
   }
@@ -493,7 +496,7 @@ Mirror.prototype.setAttributes = function (el, attrs) {
       }
     }
     for (i=0; i<toDelete.length; i++) {
-      console.log('removing attr', toDelete[i]);
+      log(DEBUG, 'removing attr', toDelete[i]);
       el.removeAttribute(toDelete[i]);
     }
   }
@@ -568,7 +571,7 @@ Mirror.prototype.serializeEvent = function (event) {
           value = {jsmirrorId: value.jsmirrorId};
         }
       } catch (e) {
-        console.log('could not get jsmirrorId', value, i, e);
+        log(WARN, 'could not get jsmirrorId', value, i, e);
         continue;
       }
     }
@@ -595,6 +598,9 @@ Mirror.prototype.docEvents = [
 ];
 
 Mirror.prototype.catchEvent = function (event) {
+  if (inHighlighting) {
+    return;
+  }
   if (event.target) {
     var p = event.target;
     while (p) {
@@ -631,7 +637,7 @@ Mirror.prototype.catchEvent = function (event) {
 };
 
 Mirror.prototype.changeEvent = function (event) {
-  console.log('got change', event, event.target, event.target.value);
+  log(DEBUG, 'got change', event, event.target, event.target.value);
   this.connector.send(
     {change: {target: event.target.jsmirrorId, value: event.target.value}});
 };
@@ -663,12 +669,10 @@ function Panel(connection, isMaster) {
     return self.highlightListener(event);
   };
   if (! document.body) {
-    console.log('event listener');
     window.addEventListener('load', function () {
       self.initPanel();
     }, false);
   } else {
-  console.log('loading panel');
     this.initPanel();
   }
 }
@@ -683,11 +687,11 @@ Panel.prototype.initPanel = function () {
   this.box.style.height = '10em';
   this.box.style.width = '7em';
   this.box.style.zIndex = '1000';
-  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000">'
+  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000; color: #000">'
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
     + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00;">&#9675;</span>'
     + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.connection.shareUrl + '">share</a></div>' : '')
+    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.connection.shareUrl + '" style="text-decoration: underline; color: #006;">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
     + '<input type="text" id="jsmirror-input" style="width: 100%">'
     + '</div>';
@@ -708,6 +712,7 @@ Panel.prototype.initPanel = function () {
   this.highlightButton = document.getElementById('jsmirror-highlight');
   this.highlightButton.addEventListener('click', function () {
     document.addEventListener('click', self._boundHighlightListener, true);
+    inHighlighting = true;
     self.highlightButton.style.backgroundColor = '#f00';
     self.highlightButton.style.color = '#f00';
   }, false);
@@ -722,8 +727,17 @@ Panel.prototype.initPanel = function () {
   }, false);
 };
 
+var inHighlighting = false;
+
 Panel.prototype.highlightListener = function (event) {
   var self = this;
+  document.removeEventListener('click', self._boundHighlightListener, true);
+  if (! inHighlighting) {
+    // This shouldn't happen, but sometimes has
+    log(INFO, 'highlightListener got event, but should not have');
+    return;
+  }
+  inHighlighting = false;
   if (this.highlightedElement) {
     this.removeHighlight();
   }
@@ -784,7 +798,7 @@ function checkBookmarklet() {
       var destination = window.runBookmarklet.app;
       delete window.runBookmarklet;
       // FIXME: don't hardcode:
-      master = new Master(destination, generateToken());
+      master = new Master(destination, makeSessionToken());
     });
   }
 }
@@ -891,6 +905,17 @@ function iterNodes(start) {
     }
     return result;
   };
+}
+
+function makeSessionToken() {
+  var name = window.name;
+  var match = (/^view-([a-zA-Z0-9]+)$/).exec(name || '');
+  if (match) {
+    return match[1];
+  }
+  var token = generateToken();
+  window.name = 'view-' + token;
+  return token;
 }
 
 TOKEN_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
