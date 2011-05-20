@@ -41,13 +41,22 @@ function Connection(server, channel, receiver) {
   }
   this.receiver = receiver;
   this.socket = new io.Socket(hostname, {port: port, rememberTransport: false
+					 ,connectTimeout: 5000
+					 ,reconnect: true
+					 ,reconnectionDelay: 500
 					 ,transports: ['websocket', 'xhr-polling']
   });
   this.socket.connect();
   // Work around a bug with WebSocket.__initialize not being called:
   if (! document.getElementById('webSocketFlash')) {
     log(DEBUG, 'initing WebSocket');
-    setTimeout(function () {WebSocket.__initialize();}, 500);
+    setTimeout(function () {
+      WebSocket.__initialize();
+      setTimeout(function () {
+        document.getElementById('webSocketFlash').jsmirrorHide = true;
+        document.getElementById('webSocketContainer').jsmirrorHide = true;
+      }, 500);
+    }, 500);
   }
   this.channel = channel;
   this.socket.send({subscribe: channel, hello: true});
@@ -196,6 +205,7 @@ Master.prototype.sendEvent = function (event, target) {
   }
   if (target) {
     var doDefault = target.dispatchEvent(event);
+    log(DEBUG, 'should do default', event.type, target.tagName, target.href);
     if (doDefault && event.type == 'click' && target.tagName == 'A' && target.href) {
       // Dispatching a click event never actually follows the link itself
       location.href = target.href;
@@ -391,9 +401,9 @@ Mirror.prototype.message = function (event) {
     this.setDoc(event.doc);
   }
   if (event.chatMessages) {
-    log(INFO, 'Received chat message:', events[i].chatMessages);
-    for (var j=0; j<events[i].chatMessages.length; j++) {
-      this.panel.displayMessage(events[i].chatMessages[j], false);
+    log(INFO, 'Received chat message:', event.chatMessages);
+    for (var j=0; j<event.chatMessages.length; j++) {
+      this.panel.displayMessage(event.chatMessages[j], false);
     }
   }
 };
