@@ -1,50 +1,20 @@
-VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; ERROR = 50; CRITICAL = 60;
-LOG_LEVEL = DEBUG;
+/************************************************************
+ * Channel: connection to the server
+ */
 
-function log(level) {
-  if (typeof console == 'undefined') {
-    return;
-  }
-  if (level < LOG_LEVEL) {
-    return;
-  }
-  var args = [];
-  for (var i=1; i<arguments.length; i++) {
-    args.push(arguments[i]);
-  }
-  var method = 'log';
-  if (level >= ERROR && console.error) {
-    method = 'error';
-  } else if (level >= INFO && console.info) {
-    method = 'info';
-  } else {
-    method = 'debug';
-  }
-  console[method].apply(console, args);
-}
-
-function Connection(server, channel, receiver) {
+function Channel(server, channel, receiver) {
   if (this === window) {
     throw 'You forgot new';
   }
-  var hostname, port;
-  if (server.indexOf('//') != -1) {
-    hostname = server.substr(server.indexOf('//')+2);
-  } else {
-    hostname = server;
-  }
-  if (hostname.indexOf(':') != -1) {
-    port = hostname.substr(hostname.indexOf(':')+1);
-    hostname = hostname.substr(0, hostname.indexOf(':'));
-  } else {
-    port = 80;
-  }
+  server = parseUrl(server);
   this.receiver = receiver;
-  this.socket = new io.Socket(hostname, {port: port, rememberTransport: false
-					 ,connectTimeout: 5000
-					 ,reconnect: true
-					 ,reconnectionDelay: 500
-					 ,transports: ['websocket', 'xhr-polling']
+  this.socket = new io.Socket(server.hostname, {
+    rememberTransport: false,
+    connectTimeout: 5000,
+    reconnect: true,
+    reconnectionDelay: 500,
+    transports: ['websocket', 'xhr-polling'],
+    port: server.port
   });
   this.socket.connect();
   // Work around a bug with WebSocket.__initialize not being called:
@@ -59,12 +29,9 @@ function Connection(server, channel, receiver) {
     }, 500);
   }
   this.channel = channel;
-  this.socket.send({subscribe: channel, hello: true});
+  this.send({subscribe: channel, hello: true});
   log(DEBUG, 'created socket', this.socket);
   var self = this;
-  this.socket.on('connect', function () {
-    //self.socket.send({subscribe: channel});
-  });
   // FIXME: some sort of queue?
   // FIXME: handle reconnect_failed event
   this.socket.on('message', function (msg) {
@@ -74,79 +41,108 @@ function Connection(server, channel, receiver) {
     }
     self.receiver.message(msg);
   });
+  this.shareUrl = server.url + '/view/' + channel;
 }
 
-Connection.prototype.send = function (message) {
+Channel.prototype.send = function (message) {
   message.subscribe = this.channel;
-  log(INFO, 'sending message', message);
   message = JSON.stringify(message);
+  log(INFO, 'sending message', message.substr(0, 70));
   this.socket.send(message);
 };
 
-function makeId() {
-  return 'el' + (arguments.callee.counter++);
-}
-makeId.counter=0;
+/************************************************************
+ * Base: base of Master and Mirror
+ */
+
+function Base () {
+};
+
+Base.prototype.send = function (msg) {
+  /* Sends a message to the server */
+  log(INFO, 'sending message', msg);
+  this.channel.send(msg);
+};
+
+Base.prototype.sendChat = function (msgs) {
+  /* Sends a chat to the server */
+  this.send({chatMessages: msgs});
+};
+
+Base.prototype.sendHighlight = function (jsmirrorId) {
+  this.send({highlight: jsmirrorId});
+};
+
+Base.prototype.getRange = function () {
+  var range = window.getSelection();
+  if ((! range) || (! range.rangeCount)) {
+    return null;
+  }
+  range = range.getRangeAt(0);
+  if (! range) {
+    return null;
+  }
+  return {startContainer: range.startContainer,
+          endContainer: range.endContainer,
+          startOffset: range.startOffset,
+          endOffset: range.endOffset};
+};
+
+Base.prototype.message = function (msg) {
+  /* Called when the server sends a message to us */
+  this.processCommand(msg);
+};
+
+/************************************************************
+ * Master: the browser that is sending the screen
+ */
 
 function Master(server, channel) {
   if (this === window) {
     throw 'You forgot new';
   }
-  this.connector = new Connection(server, channel, this);
-  this.channel = channel;
-  this.shareUrl = server + '/view/' + channel;
-  this.allElements = {};
+  this.channel = new Channel(server, channel, this);
+  this.elements = {};
   this.lastSentDoc = null;
   this.panel = new Panel(this, true);
-  this.highlightElementId = null;
-  var self = this;
-  this._boundSendDoc = function (onsuccess) {
-    return self.sendDoc(onsuccess);
-  };
+  this._boundSendDoc = this.sendDoc.bind(this);
   setInterval(this._boundSendDoc, 1000);
 }
 
-Master.prototype.message = function (msg) {
-  this.dispatchEvent(msg);
-};
-
-Master.prototype.send = function (msg) {
-  log(INFO, 'sending message', msg);
-  this.connector.send(msg);
-};
-
-Master.prototype.notifyMessage = function () {
-  this.send({chatMessages: this.panel.chatMessages});
-  this.panel.chatMessages = [];
-};
-
-Master.prototype.sendHighlight = function (jsmirrorId) {
-  this.send({highlight: jsmirrorId});
-};
+Master.prototype = new Base();
 
 Master.prototype.sendDoc = function (onsuccess) {
+  /* Sends a complete copy of the current document to the server */
   var self = this;
   var data = this.serializeDocument();
+  data = {doc: data};
+  var range = this.getRange();
+  if (range) {
+    range = expandRange(range);
+    range.start = range.start.jsmirrorId;
+    range.end = range.end.jsmirrorId;
+    data.range = range;
+  }
   var cacheData = JSON.stringify(data);
   var req;
   if (cacheData !== this.lastSentDoc) {
     log(DEBUG, 'Sending DOM updates');
-    this.send({doc: data});
+    this.send(data);
     this.lastSentDoc = cacheData;
   } else {
     log(VERBOSE, 'skipping DOM updates, no change');
   }
 };
 
-Master.prototype.dispatchEvent = function (event) {
+Master.prototype.processCommand = function (event) {
   log(DEBUG, 'got', typeof event, event, !!event.chatMessages);
   if (event.event) {
     var realEvent = this.deserializeEvent(event.event);
-    this.sendEvent(realEvent, realEvent.target);
+    this.dispatchEvent(realEvent, realEvent.target);
   }
   if (event.change) {
     log(INFO, 'Received change:', event.change, 'target', event.change.target);
-    this.sendChange(event.change);
+    this.processChange(event.change);
   }
   if (event.chatMessages) {
     log(INFO, 'Received chat message:', event.chatMessages);
@@ -168,6 +164,8 @@ Master.prototype.dispatchEvent = function (event) {
 };
 
 Master.prototype.deserializeEvent = function (event) {
+  /* Takes an actual event (e.g., mouse click) that was sent
+     over the wire, and turns it into a native event */
   var value;
   var newEvent = document.createEvent(event.module);
 
@@ -193,12 +191,11 @@ Master.prototype.deserializeEvent = function (event) {
 };
 
 Master.prototype.getElement = function (id) {
-  return this.allElements[id];
+  return this.elements[id];
 };
 
-Master.prototype.sendEvent = function (event, target) {
+Master.prototype.dispatchEvent = function (event, target) {
   log(INFO, 'Throwing internal event', event.type, event, target);
-  window.gt = target;
   if (target && ! target.dispatchEvent) {
     log(WARN, 'huh', event, target, target===window);
     target = window;
@@ -211,11 +208,13 @@ Master.prototype.sendEvent = function (event, target) {
       location.href = target.href;
     }
   } else {
-    return document.dispatchEvent(event);
+    // FIXME: do other default actions
+    document.dispatchEvent(event);
   }
 };
 
 Master.prototype.initEvent = function (event, data, module) {
+  /* Instantiates an actual native event object */
   if (module in this.eventAliases) {
     module = this.eventAliases[module];
   }
@@ -290,13 +289,15 @@ Master.prototype.eventAliases = {
   PopupEvents: 'MouseEvents'
 };
 
-Master.prototype.sendChange = function (event) {
+Master.prototype.processChange = function (event) {
+  /* Processes a change event that came from the server */
   var target = this.getElement(event.target);
   log(INFO, 'Updating', target, 'to value', event.value);
   target.value = event.value;
 };
 
 Master.prototype.skipElement = function (el) {
+  /* true if this element should be skipped when sending to the mirror */
   if (el.tagName == 'SCRIPT' || el.jsmirrorHide) {
     return true;
   }
@@ -304,22 +305,25 @@ Master.prototype.skipElement = function (el) {
 };
 
 Master.prototype.serializeDocument = function () {
+  /* Serializes a complete document to JSON object */
   var result = {
     href: location.href,
     htmlAttrs: this.serializeAttributes(document.childNodes[0]),
     head: this.serializeElement(document.head),
     body: this.serializeElement(document.body),
-    hash: location.hash || "",
-    highlightElement: this.highlightElementId
+    hash: location.hash || ""
   };
-  this.highlightElementId = null;
   return result;
 };
 
 Master.prototype.serializeElement = function (el) {
+  /* Serializes a single element to a JSON object.
+     The object looks like:
+       [tagName, localId, {attrs}, [children...]]
+   */
   if (! el.jsmirrorId) {
     el.jsmirrorId = makeId();
-    this.allElements[el.jsmirrorId] = el;
+    this.elements[el.jsmirrorId] = el;
   }
   var attrs = this.serializeAttributes(el);
   // FIXME: I don't understand this, but there's a div that is hidden on Facebook
@@ -346,13 +350,15 @@ Master.prototype.serializeElement = function (el) {
         children.push(this.serializeElement(child));
       }
     } else {
-      // what then?
+      // FIXME: what then?
+      log(DEBUG, 'not sure how to serialize this element', child);
     }
   }
   return [el.tagName, el.jsmirrorId, attrs, children];
 };
 
 Master.prototype.serializeAttributes = function (el) {
+  /* Serialize the attributes of an element into a JSON object */
   var attrs = {};
   if (el.attributes) {
     for (var i=0; i<el.attributes.length; i++) {
@@ -382,20 +388,25 @@ function Mirror(server, channel) {
   if (this === window) {
     throw 'You forgot new';
   }
-  this.connector = new Connection(server, channel, this);
+  this.channel = new Channel(server, channel, this);
   var self = this;
-  this._boundCatchEvent = function (event) {
-    return self.catchEvent(event);
-  };
-  this._boundChangeEvent = function (event) {
-    return self.changeEvent(event);
-  };
-  this.lastModified = null;
+  this._boundCatchEvent = this.catchEvent.bind(this);
+  this._boundChangeEvent = this.changeEvent.bind(this);
   this.panel = new Panel(this, false);
   this.lastHref = null;
 }
 
-Mirror.prototype.message = function (event) {
+Mirror.prototype = new Base();
+
+Mirror.prototype.sendEvent = function (event) {
+  this.send({event: event});
+};
+
+Mirror.prototype.sendChange = function (change) {
+  this.send({change: change});
+};
+
+Mirror.prototype.processCommand = function (event) {
   log(DEBUG, 'got message', JSON.stringify(event).substr(0, 70));
   if (event.doc) {
     this.setDoc(event.doc);
@@ -405,6 +416,26 @@ Mirror.prototype.message = function (event) {
     for (var j=0; j<event.chatMessages.length; j++) {
       this.panel.displayMessage(event.chatMessages[j], false);
     }
+  }
+  if (event.highlightElement) {
+    var el = this.getElementById(document.body, doc.highlightElement);
+    if (el) {
+      temporaryHighlight(el);
+    }
+  }
+  if (event.range) {
+    console.log('got range', event.range);
+    event.range.start = this.getElementById(document.body, event.range.start);
+    event.range.end = this.getElementById(document.body, event.range.end);
+    showRange(event.range, function (el) {
+      if (el.nodeType == document.ELEMENT_NODE && (! el.jsmirrorHide)) {
+        el.style.backgroundColor = '#ff9';
+        //el.style.borderLeft = '1px solid #f00';
+        //el.style.borderRight = '1px solid #0f0';
+        //el.style.borderTop = '1px solid #00f';
+        //el.style.borderBottom = '1px solid #f0f';
+      }
+    });
   }
 };
 
@@ -432,16 +463,11 @@ Mirror.prototype.setDoc = function (doc) {
       this.panel.displayMessage(doc.chatMessages[i], false);
     }
   }
-  if (doc.highlightElement) {
-    var el = this.getElementById(document.body, doc.highlightElement);
-    if (el) {
-      temporaryHighlight(el);
-    }
-  }
 };
 
 // FIXME: ugh, so inefficient...
 Mirror.prototype.getElementById = function (el, jsmirrorId) {
+  /* Retrieves an element given its internal ID */
   if (el.jsmirrorId == jsmirrorId) {
     return el;
   }
@@ -458,12 +484,14 @@ Mirror.prototype.getElementById = function (el, jsmirrorId) {
 };
 
 Mirror.prototype.setElement = function (el, serialized) {
+  /* Takes an element and changes it to match the serialized (JSON) version of
+     that element */
   var tagName = serialized[0];
   var jsmirrorId = serialized[1];
   var attrs = serialized[2];
   var children = serialized[3];
   if (el.tagName != tagName) {
-    // Heck with it, do it ane1w
+    // Heck with it, recreate the element entirely
     el.parentNode.replaceChild(this.deserializeElement(serialized), el);
     return;
   }
@@ -479,13 +507,23 @@ Mirror.prototype.setElement = function (el, serialized) {
       offset++;
       i--;
       continue;
+    } else if (typeof children[i] == 'string') {
+      if (existing.nodeType != document.TEXT_NODE) {
+        existing.parentNode.replaceChild(document.createTextNode(children[i]), existing);
+      } else {
+        existing.nodeValue = children[i];
+      }
     } else {
       this.setElement(existing, children[i]);
     }
   }
+  while (el.childNodes.length - offset > children.length) {
+    el.removeChild(el.childNodes[el.childNodes.length-1]);
+  }
 };
 
 Mirror.prototype.setAttributes = function (el, attrs) {
+  /* Makes an element's attributes match the given JSON attributes */
   var attrLength = 0;
   for (var i in attrs) {
     if (! attrs.hasOwnProperty(i)) {
@@ -513,6 +551,7 @@ Mirror.prototype.setAttributes = function (el, attrs) {
 };
 
 Mirror.prototype.setBase = function (baseHref) {
+  /* Sets the <base href> of the document */
   var existing = document.getElementsByTagName('base');
   for (var i=0; i<existing.length; i++) {
     existing[i].parentNode.removeChild(existing[i]);
@@ -523,6 +562,7 @@ Mirror.prototype.setBase = function (baseHref) {
 };
 
 Mirror.prototype.deserializeElement = function (data) {
+  /* Creates an element to match the given data */
   if (typeof data == 'string') {
     return document.createTextNode(data);
   }
@@ -564,7 +604,8 @@ Mirror.prototype.deserializeElement = function (data) {
 };
 
 Mirror.prototype.serializeEvent = function (event) {
-  var result = {jsmirrorEvent: 'general'};
+  /* Serializes an event to JSON */
+  var result = {};
   for (var i in event) {
     var value = event[i];
     if (i.toUpperCase() === i && typeof value == 'number') {
@@ -572,9 +613,11 @@ Mirror.prototype.serializeEvent = function (event) {
       continue;
     }
     if (typeof value == 'function' || value === window) {
+      // Skip methods, view
       continue;
     }
     if (value && typeof value == 'object') {
+      // Serialize references to elements using their internal ID
       try {
         var jsmirrorId = value.jsmirrorId;
         if (jsmirrorId) {
@@ -587,8 +630,11 @@ Mirror.prototype.serializeEvent = function (event) {
     }
     result[i] = value;
   }
+  // Some default attributes don't show up in iteration:
   result.cancelable = event.cancelable;
   result.canBubble = event.canBubble;
+  // Hack to figure out what "module" or class of events this belongs to
+  // (Probably not portable across browsers)
   var evName = event+"";
   evName = evName.substr(evName.indexOf(' ')+1, evName.length-evName.indexOf(' ')-2);
   result.module = evName;
@@ -596,6 +642,7 @@ Mirror.prototype.serializeEvent = function (event) {
 };
 
 Mirror.prototype.catchEvents = function () {
+  /* Catches all events in docEvents */
   var self = this;
   for (var i=0; i<this.docEvents.length; i++) {
     document.addEventListener(this.docEvents[i], this._boundCatchEvent, true);
@@ -608,10 +655,12 @@ Mirror.prototype.docEvents = [
 ];
 
 Mirror.prototype.catchEvent = function (event) {
-  if (inHighlighting) {
+  if (inHighlighting && event.type == 'click') {
+    // Don't get in the way of the highlighter
     return;
   }
   if (event.target) {
+    // Ignore anything under a jsmirrorHide element (generally the panel)
     var p = event.target;
     while (p) {
       if (p.jsmirrorHide) {
@@ -625,14 +674,14 @@ Mirror.prototype.catchEvent = function (event) {
       && ([114, 116].indexOf(event.charCode) != -1
           || [9, 33, 34].indexOf(event.keyCode) != -1)) {
     // Let it propagate: Ctrl+T, Ctrl+R, Tab, PgUp, PgDown
-    // FIXME: things like scrolling won't work, and depend on the context
+    // FIXME: things like scrolling (arrow keys or space) won't work, and depend on the context
     return;
   }
   if (event.type == 'keypress') {
     log(INFO, 'keypress', event.charCode, event.keyCode, event.target);
   }
   var serialized = this.serializeEvent(event);
-  this.connector.send({event: serialized});
+  this.sendEvent(serialized);
   // Maybe should check event.cancelable -- stopPropagation doesn't mean anything if
   // that's not true
   var tagName = event.target.tagName;
@@ -648,40 +697,25 @@ Mirror.prototype.catchEvent = function (event) {
 
 Mirror.prototype.changeEvent = function (event) {
   log(DEBUG, 'got change', event, event.target, event.target.value);
-  this.connector.send(
-    {change: {target: event.target.jsmirrorId, value: event.target.value}});
-};
-
-Mirror.prototype.notifyMessage = function () {
-  this.connector.send(
-    {chatMessages: this.panel.chatMessages});
-  this.panel.chatMessages = [];
-};
-
-Mirror.prototype.sendHighlight = function (jsmirrorId) {
-  this.connector.send(
-    {highlight: jsmirrorId});
+  this.sendChange(
+    {target: event.target.jsmirrorId, value: event.target.value});
 };
 
 /************************************************************
  The panel/UI
  */
 
-function Panel(connection, isMaster) {
+function Panel(controller, isMaster) {
   if (this === window) {
     throw 'you forgot new';
   }
-  this.connection = connection;
+  this.controller = controller;
   this.isMaster = isMaster;
-  this.chatMessages = [];
   var self = this;
-  this._boundHighlightListener = function (event) {
-    return self.highlightListener(event);
-  };
+  this._boundHighlightListener = this.highlightListener.bind(this);
   if (! document.body) {
-    window.addEventListener('load', function () {
-      self.initPanel();
-    }, false);
+    // We have to defer the actual creation
+    window.addEventListener('load', this.initPanel.bind(this), false);
   } else {
     this.initPanel();
   }
@@ -701,7 +735,7 @@ Panel.prototype.initPanel = function () {
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
     + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00;">&#9675;</span>'
     + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.connection.shareUrl + '" style="text-decoration: underline; color: #006;">share</a></div>' : '')
+    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #006;">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
     + '<input type="text" id="jsmirror-input" style="width: 100%">'
     + '</div>';
@@ -737,13 +771,14 @@ Panel.prototype.initPanel = function () {
   }, false);
 };
 
+// Flag that we are currently highlighting something
 var inHighlighting = false;
 
 Panel.prototype.highlightListener = function (event) {
   var self = this;
   document.removeEventListener('click', self._boundHighlightListener, true);
   if (! inHighlighting) {
-    // This shouldn't happen, but sometimes has
+    // This shouldn't happen
     log(INFO, 'highlightListener got event, but should not have');
     return;
   }
@@ -753,7 +788,7 @@ Panel.prototype.highlightListener = function (event) {
   }
   this.highlightedElement = event.target;
   this.highlightElement();
-  this.connection.sendHighlight(this.highlightedElement.jsmirrorId);
+  this.controller.sendHighlight(this.highlightedElement.jsmirrorId);
   this.highlightButton.style.backgroundColor = '';
   this.highlightButton.style.color = '#f00';
   setTimeout(function () {
@@ -773,15 +808,18 @@ Panel.prototype.highlightElement = function () {
 
 Panel.prototype.removeHighlight = function () {
   this.highlightedElement.style.border = this.oldBorder;
+  this.highlightElement = null;
+  this.oldBorder = null;
 };
 
 Panel.prototype.addChatMessage = function (message) {
   this.displayMessage(message, true);
-  this.chatMessages.push(message);
-  this.connection.notifyMessage();
+  this.controller.sendChat(message);
 };
 
 Panel.prototype.displayMessage = function (message, here) {
+  /* Displays a chat message; if here is true then it's a local message,
+     otherwise remote */
   var div = document.createElement('div');
   div.style.margin = '0';
   div.style.padding = '2px';
@@ -801,19 +839,20 @@ function temporaryHighlight(el) {
   }, 5000);
 };
 
-var master;
 function checkBookmarklet() {
   if (window.runBookmarklet) {
     doOnLoad(function () {
       var destination = window.runBookmarklet.app;
       delete window.runBookmarklet;
       // FIXME: don't hardcode:
-      master = new Master(destination, makeSessionToken());
+      window.master = new Master(destination, makeSessionToken());
     });
   }
 }
 
 function doOnLoad(func) {
+  /* Runs a function on window load, or immediately if the window has
+     already loaded */
   if (document.readyState == 'complete') {
     func();
   } else {
@@ -821,14 +860,9 @@ function doOnLoad(func) {
   }
 }
 
-function getNearestElement(pixelOffset, roundDown) {
-  var elPos = el.offsetTop;
-  if (! roundDown) {
-    elPos += el.offsetHeight;
-  }
-}
-
 function getScreenRange() {
+  /* Returns {start, end} where these elements are the closest ones
+     to the top and bottom of the currently-visible screen. */
   var start = window.pageYOffset;
   var end = start + document.body.clientHeight;
   var nodes = iterNodes(document.body);
@@ -862,10 +896,13 @@ function getScreenRange() {
   }
   startEl.style.borderTop = '1px dotted #00f';
   endEl.style.borderBottom = '1px dotted #0f0';
+  // FIXME: should get a pixel offset too
   return {start: startEl, end: endEl};
 }
 
 function iterNodes(start) {
+  /* Iterates, in order (depth-first) all elements in the document.
+     Returns a callback that yields these elements. */
   var stack = [[start, null]];
   var cursor = 0;
   return function () {
@@ -936,4 +973,336 @@ function generateToken() {
     s += TOKEN_CHARS.charAt(Math.random() * TOKEN_CHARS.length);
   }
   return s;
+}
+
+function parseUrl(url) {
+  var result = {url: url};
+  if (url.indexOf('//') != -1) {
+    result.hostname = url.substr(url.indexOf('//')+2);
+  } else {
+    result.hostname = url;
+    result.url = 'http://' + url;
+  }
+  if (result.hostname.indexOf(':') != -1) {
+    result.port = result.hostname.substr(result.hostname.indexOf(':')+1);
+    result.hostname = result.hostname.substr(0, result.hostname.indexOf(':'));
+  } else {
+    result.port = 80;
+  }
+  return result;
+}
+
+function makeId() {
+  return 'el' + (arguments.callee.counter++);
+}
+makeId.counter=0;
+
+VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; ERROR = 50; CRITICAL = 60;
+LOG_LEVEL = DEBUG;
+
+function log(level) {
+  if (typeof console == 'undefined') {
+    return;
+  }
+  if (level < LOG_LEVEL) {
+    return;
+  }
+  var args = [];
+  for (var i=1; i<arguments.length; i++) {
+    args.push(arguments[i]);
+  }
+  var method = 'log';
+  if (level >= ERROR && console.error) {
+    method = 'error';
+  } else if (level >= INFO && console.info) {
+    method = 'info';
+  } else {
+    method = 'debug';
+  }
+  console[method].apply(console, args);
+}
+
+function expandRange(range) {
+  /* Given a range object, return
+       {start: el, startOffset: int, startSibling: bool,
+        end: el, endOffset: int, endSibling: bool}
+     The standard range object (https://developer.mozilla.org/en/DOM/range) tends to
+     point to text nodes which are not referencable for us.  If *Sibling is true, then the
+     offset is after/before the element; if false then it is *interior to* the element.
+  */
+  var result = {start: range.startContainer, end: range.endContainer,
+                startOffset: range.startOffset, endOffset: range.endOffset,
+                startText: false, endText: false};
+  function doit(name) {
+    if (result[name].nodeType == document.TEXT_NODE) {
+      while (true) {
+        var prev = result[name].previousSibling;
+        if (prev === null) {
+          result[name] = result[name].parentNode;
+          result[name+'Text'] = 'inner';
+          break;
+        } else if (prev.nodeType == document.ELEMENT_NODE) {
+          result[name] = prev;
+          result[name+'Text'] = 'after';
+          break;
+        } else if (prev.nodeType == document.TEXT_NODE) {
+          result[name] = prev;
+          result[name+'Offset'] += prev.nodeValue.length;
+        }
+      }
+    }
+  }
+  doit('start'); doit('end');
+  return result;
+}
+
+function showRange(range, elCallback) {
+  if (range.start == range.end && range.startText == 'inner' && range.endText == 'inner') {
+    // A special case, when the range is entirely within one element
+    var el = splitTextBetween(range.start, range.startOffset, range.endOffset);
+    elCallback(el);
+    return;
+  }
+  if (range.startText == 'inner') {
+    range.start = splitTextAfter(range.start.childNodes[0], range.startOffset);
+  } else if (range.startText == 'after') {
+    range.start = splitTextAfter(range.start.nextSibling, range.startOffset);
+  } else if (range.startOffset) {
+    range.start = range.start.childNodes[range.startOffset];
+  }
+  if (range.endText == 'inner') {
+    range.end = splitTextBefore(range.end.childNodes[0], range.endOffset);
+  } else if (range.endText == 'after') {
+    range.end = splitTextBefore(range.end.nextSibling, range.endOffset);
+  } else if (range.endOffset) {
+    range.end = range.end.childNodes[range.endOffset];
+  }
+  // Now we strictly need to go from the start element to the end element (inclusive!)
+  var pos = range.start;
+  while (true) {
+    elCallback(pos);
+    pos = getNextElement(pos);
+    while (containsElement(pos, range.end)) {
+      pos = pos.childNodes[0];
+    }
+    if (pos == range.end) {
+      elCallback(pos);
+      break;
+    }
+  }
+}
+
+function containsElement(container, subelement) {
+  /* Returns true if subelement is inside container
+     Does not return true if subelement == container */
+  if (container == subelement) {
+    return false;
+  }
+  if (container.nodeType != document.ELEMENT_NODE) {
+    return false;
+  }
+  for (var i=0; i<container.childNodes.length; i++) {
+    var node = container.childNodes[i];
+    if (node == subelement) {
+      return true;
+    }
+    if (containsElement(container.childNodes[i], subelement)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function showRange2(range, elCallback) {
+  /* Given something from expandRange(), create elements encompassing that range
+     and call elCallback on each such element (which may, for example, change
+     the color of the elements */
+  var start = range.start;
+  if (start == range.end && range.startText == 'inner' && range.endText == 'inner') {
+    // A special case, when the range is entirely within one element
+    start = splitTextBetween(start, range.startOffset, range.endOffset);
+    elCallback(start);
+    return;
+  }
+  console.log('start', start.jsmirrorId, range.end.jsmirrorId);
+  if (range.startText == 'inner') {
+    // The range starts within start
+    start = splitTextAfter(start.childNodes[0], range.startOffset);
+  } else if (range.startText == 'after') {
+    // The range starts after start
+    start = splitTextAfter(start.nextSibling, range.startOffset);
+  } else {
+    // FIXME: I guess this case the range is inclusive?
+    start = start.childNodes[range.startOffset];
+  }
+  elCallback(start);
+  var el = start; j=0;
+  while (true) {
+    if (el.parentNode == range.end) {
+      break;
+    }
+    j++;
+    if (j<50)
+    console.log('interior', (el.innerHTML || el.nodeValue), el.jsmirrorId, 'dest', range.end.jsmirrorId);
+    el = getNextElement(el);
+    if (el === null) {
+      console.log('Somehow fell out of range');
+      break;
+    }
+    elCallback(el);
+  }
+  if (range.endText == 'inner') {
+    // The range starts within end
+    el = splitText(range.end.childNodes[0], range.endOffset);
+    console.log('interior text', el.innerHTML);
+    elCallback(el);
+  } else if (range.endText == 'after') {
+    // The range starts after end
+    console.log('last element', el);
+    elCallback(range.end);
+    el = splitText(range.end.nextSibling, range.endOffset);
+    console.log('trailing text', el.innerHTML);
+    elCallback(el);
+  } else {
+    for (var i=0; i<=range.endOffset; i++) {
+      console.log('trailing nodes', i, range.end.childNodes[i]);
+      elCallback(range.end.childNodes[i]);
+    }
+  }
+}
+
+function getNextElement(el) {
+  if (el.childNodes && el.childNodes.length) {
+    //console.log('Looking in children', el, el.childNodes[0]);
+    return el.childNodes[0];
+  }
+  while (! el.nextSibling) {
+    //console.log('looking in el parent for next', el, el.parentNode);
+    el = el.parentNode;
+    if (! el) {
+      console.log('no parent');
+      return null;
+    }
+  }
+  return el.nextSibling;
+}
+
+function splitTextBefore(el, offset) {
+  /* Creates a node that emcompasses all the text starting at el
+     and going offset characters */
+  var span = document.createElement('span');
+  var text = '';
+  if (el.nodeType != document.TEXT_NODE) {
+    throw 'Unexpected node: ' + el;
+  }
+  while (el.nodeValue.length < offset) {
+    text += el.nodeValue;
+    offset -= el.nodeValue.length;
+    var remove = el;
+    el = el.nextSibling;
+    remove.parentNode.removeChild(remove);
+  }
+  text += el.nodeValue.substr(0, offset);
+  var rest = el.nodeValue.substr(offset, el.nodeValue.length-offset);
+  el.nodeValue = rest;
+  span.appendChild(document.createTextNode(text));
+  el.parentNode.insertBefore(span, el);
+  return span;
+}
+
+function splitTextAfter(el, offset) {
+  /* Creates a node *after* offset characters, encompassing all
+     text that follows it.  Also all other text siblings will be
+     encompassed by spans. */
+  var text = '';
+  while (el.nodeValue.length < offset) {
+    text += el.nodeValue;
+    offset -= el.nodeValue.length;
+    el = el.nextSibling;
+  }
+  var rest = el.nodeValue.substr(offset, el.nodeValue.length-offset);
+  el.nodeValue = el.nodeValue.substr(0, offset);
+  var last = document.createElement('span');
+  var span = last;
+  last.appendChild(document.createTextNode(rest));
+  el.parentNode.insertBefore(last, el.nextSibling);
+  var pos = last.nextSibling;
+  while (pos) {
+    if (pos.nodeType == document.TEXT_NODE) {
+      if (last) {
+        var here = pos;
+        pos = pos.nextSibling;
+        last.appendChild(here);
+      } else {
+        last = document.createElement('span');
+        var here = pos;
+        pos = pos.nextSibling;
+        here.parentNode.insertBefore(last, here);
+        last.appendChild(here);
+      }
+    } else {
+      last = null;
+      pos = pos.nextSibling;
+    }
+  }
+  return span;
+}
+
+function splitTextBetween(el, start, end) {
+  /* Creates a span that encompasses the text within el, between start and
+     end character offsets */
+  if (start > end) {
+    throw 'Unexpected range: '+start+' to '+end;
+  }
+  var innerLength = end-start;
+  var startText = '';
+  var endText = '';
+  var innerText = '';
+  var inStart = true;
+  var inEnd = false;
+  var textNodes = [];
+  for (var i=0; i<el.childNodes.length; i++) {
+    var node = el.childNodes[i];
+    if (node.nodeType != document.TEXT_NODE) {
+      if (inEnd) {
+        break;
+      }
+      console.log('Unexpected element', node);
+      continue;
+    }
+    textNodes.push(node);
+    var text = node.nodeValue;
+    if (inStart && text.length < start) {
+      startText += text;
+      start -= text.length;
+    } else if (inStart) {
+      startText += text.substr(0, start);
+      inStart = false;
+      text = text.substr(start, text.length-start);
+    }
+    if ((! inStart) && (! inEnd)) {
+      if (text.length < innerLength) {
+        innerText += text;
+        innerLength -= text.length;
+      } else {
+        innerText += text.substr(0, innerLength);
+        text = text.substr(innerLength, text.length-innerLength);
+        inEnd = true;
+      }
+    }
+    if (inEnd) {
+      endText += text;
+    }
+  }
+  var startNode = document.createTextNode(startText);
+  var endNode = document.createTextNode(endText);
+  var innerNode = document.createElement('span');
+  innerNode.appendChild(document.createTextNode(innerText));
+  for (i=0; i<textNodes.length; i++) {
+    el.removeChild(textNodes[i]);
+  }
+  el.insertBefore(endNode, el.childNodes[0]);
+  el.insertBefore(innerNode, endNode);
+  el.insertBefore(startNode, innerNode);
+  return innerNode;
 }
