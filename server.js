@@ -1,17 +1,21 @@
-var http = require('http');
-var url = require('url');
-var fs = require('fs');
-IO_BASE = process.env.IO_BASE;
-var io = require(IO_BASE);
-
-var SERVER_ADDRESS = null;
-
 if (process.argv[2] == '-h') {
   console.log('Usage:');
   console.log('  node server.js [PORT [HOSTNAME]]');
   console.log('Set $IO_BASE to the path of Socket.IO-node (version 0.6.18)');
   process.exit();
 }
+
+var http = require('http');
+var url = require('url');
+var fs = require('fs');
+IO_BASE = process.env.IO_BASE;
+if (! IO_BASE) {
+  console.error('You must set $IO_BASE to the path of Socket.IO-node');
+  process.exit(2);
+}
+var io = require(IO_BASE);
+
+var SERVER_ADDRESS = null;
 
 var server = http.createServer(function(req, res){
   var path = url.parse(req.url).pathname;
