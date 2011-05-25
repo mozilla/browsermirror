@@ -90,6 +90,32 @@ Base.prototype.message = function (msg) {
   this.processCommand(msg);
 };
 
+Base.prototype.showScreen = function (alsoScroll) {
+  if ((! this.lastScreen) || this.lastScreen.element) {
+    return;
+  }
+  var top = getElementPosition(this.getElement(this.lastScreen.start)).top
+            + this.lastScreen.startOffsetTop;
+  var bottom = getElementPosition(this.getElement(this.lastScreen.end)).top
+               + this.lastScreen.endOffsetTop;
+  this.lastScreen.element = createVisualFrame(top, bottom);
+  if (alsoScroll) {
+    if (bottom-top < window.innerHeight) {
+      // The remote screen is smaller than ours, so put their screen in the middle
+      window.scrollBy(0, top - window.pageYOffset - (window.innerHeight - (bottom-top)) / 2);
+    } else {
+      window.scrollBy(0, top - window.pageYOffset);
+    }
+  }
+};
+
+Base.prototype.hideScreen = function () {
+  if (this.lastScreen && this.lastScreen.element) {
+    removeVisualFrame(this.lastScreen.element);
+    delete this.lastScreen.element;
+  }
+};
+
 /************************************************************
  * Master: the browser that is sending the screen
  */
@@ -120,6 +146,9 @@ Master.prototype.sendDoc = function (onsuccess) {
     range.end = range.end.jsmirrorId;
     data.range = range;
   }
+  data.screen = getScreenRange();
+  data.screen.start = data.screen.start.jsmirrorId;
+  data.screen.end = data.screen.end.jsmirrorId;
   var cacheData = JSON.stringify(data);
   var req;
   if (cacheData !== this.lastSentDoc) {
@@ -416,14 +445,14 @@ Mirror.prototype.processCommand = function (event) {
     }
   }
   if (event.highlight) {
-    var el = this.getElementById(document.body, event.highlight.target);
+    var el = this.getElement(document.body, event.highlight.target);
     if (el) {
       temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft);
     }
   }
   if (event.range) {
-    event.range.start = this.getElementById(document.body, event.range.start);
-    event.range.end = this.getElementById(document.body, event.range.end);
+    event.range.start = this.getElement(document.body, event.range.start);
+    event.range.end = this.getElement(document.body, event.range.end);
     showRange(event.range, function (el) {
       if (el.nodeType == document.ELEMENT_NODE && (! el.jsmirrorHide)) {
         el.style.backgroundColor = '#ff9';
@@ -433,6 +462,9 @@ Mirror.prototype.processCommand = function (event) {
         //el.style.borderBottom = '1px solid #f0f';
       }
     });
+  }
+  if (event.screen) {
+    this.updateScreen(event.screen);
   }
 };
 
@@ -462,22 +494,40 @@ Mirror.prototype.setDoc = function (doc) {
   }
 };
 
+Mirror.prototype.updateScreen = function (newScreen) {
+  if (this.lastScreen && this.lastScreen.element) {
+    removeVisualFrame(this.lastScreen.element);
+    this.lastScreen = null;
+  }
+  this.lastScreen = newScreen;
+  if (this.panel.viewing) {
+    this.showScreen();
+  }
+};
+
 // FIXME: ugh, so inefficient...
-Mirror.prototype.getElementById = function (el, jsmirrorId) {
+Mirror.prototype.getElementInside = function (el, jsmirrorId) {
   /* Retrieves an element given its internal ID */
+  if (jsmirrorId === undefined) {
+    throw 'Bad jsmirrorId (undefined) for getElement()';
+  }
   if (el.jsmirrorId == jsmirrorId) {
     return el;
   }
   for (var i=0; i<el.childNodes.length; i++) {
     var node = el.childNodes[i];
     if (node.nodeType == document.ELEMENT_NODE) {
-      var value = this.getElementById(node, jsmirrorId);
+      var value = this.getElementInside(node, jsmirrorId);
       if (value) {
         return value;
       }
     }
   }
   return null;
+};
+
+Mirror.prototype.getElement = function (jsmirrorId) {
+  return this.getElementInside(document.body, jsmirrorId);
 };
 
 Mirror.prototype.setElement = function (el, serialized) {
@@ -737,8 +787,8 @@ Panel.prototype.initPanel = function () {
   this.box.style.zIndex = '1000';
   this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000; color: #000">'
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
-    + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;">&#10132;</span>'
-    + '<span id="jsmirror-view" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #0f0;">&#8597;</span>'
+    + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
+    + '<span id="jsmirror-view" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>'
     + '<div id="jsmirror-container">'
     + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #006;">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
@@ -763,8 +813,22 @@ Panel.prototype.initPanel = function () {
     document.addEventListener('click', self._boundHighlightListener, true);
     inHighlighting = true;
     self.highlightButton.style.backgroundColor = '#f00';
-    self.highlightButton.style.color = '#f00';
+    self.highlightButton.style.color = '#fff';
   }, false);
+  this.viewButton = document.getElementById('jsmirror-view');
+  this.viewing = false;
+  this.viewButton.addEventListener('click', function () {
+    self.viewing = !self.viewing;
+    if (self.viewing) {
+      self.viewButton.style.backgroundColor = '#0f0';
+      self.viewButton.style.color = '#fff';
+      self.controller.showScreen(true);
+    } else {
+      self.viewButton.style.backgroundColor = '#ddf';
+      self.viewButton.style.color = '#0f0';
+      self.controller.hideScreen();
+    }
+  });
   this.chatDiv = document.getElementById('jsmirror-chat');
   var chatInput = document.getElementById('jsmirror-input');
   chatInput.addEventListener('keypress', function (event) {
@@ -793,7 +857,6 @@ Panel.prototype.highlightListener = function (event) {
     this.cancelHighlight = null;
   }
   this.highlightedElement = event.target;
-  console.log('event', event.target);
   var elPos = getElementPosition(event.target);
   var offsetLeft = event.layerX - elPos.left;
   var offsetTop = event.layerY - elPos.top;
@@ -854,6 +917,30 @@ function temporaryHighlight(el, offsetTop, offsetLeft) {
   return canceller;
 };
 
+function createVisualFrame(top, bottom) {
+  function createElement(left) {
+    var div = document.createElement('div');
+    div.style.position = 'absolute';
+    div.style.height = (bottom-top) + 'px';
+    div.style.width = '1px';
+    div.style.left = left + 'px';
+    div.style.top = top + 'px';
+    div.style.borderLeft = '3px solid #f00';
+    div.jsmirrorHide = true;
+    document.body.appendChild(div);
+    return div;
+  }
+  return {
+    left: createElement(window.pageXOffset + 20),
+    right: createElement(window.pageXOffset + window.innerWidth - 40)
+  };
+}
+
+function removeVisualFrame(frame) {
+  document.body.removeChild(frame.left);
+  document.body.removeChild(frame.right);
+}
+
 function getElementPosition(el) {
   var top = 0;
   var left = 0;
@@ -899,6 +986,8 @@ function getScreenRange() {
   var atStart = true;
   var startEl = null;
   var endEl = null;
+  var startOffsetTop = 0;
+  var endOffsetTop = 0;
   while (true) {
     var next = nodes();
     if (! next) {
@@ -910,24 +999,32 @@ function getScreenRange() {
     if (next.nodeType != document.ELEMENT_NODE) {
       continue;
     }
+    var offsetTop = 0;
+    var el = next;
+    while (el) {
+      if (el.offsetTop) {
+        offsetTop += el.offsetTop;
+      }
+      el = el.offsetParent;
+    }
     if (atStart) {
-      if (next.offsetTop > start) {
+      if (offsetTop > start) {
         startEl = endEl = next;
         atStart = false;
+        startOffsetTop = start - offsetTop;
         continue;
       }
     } else {
-      if (next.offsetTop + next.clientHeight > end) {
+      if (offsetTop + next.clientHeight > end) {
         break;
       } else {
+        endOffsetTop = end - (offsetTop + next.clientHeight);
         endEl = next;
       }
     }
   }
-  startEl.style.borderTop = '1px dotted #00f';
-  endEl.style.borderBottom = '1px dotted #0f0';
-  // FIXME: should get a pixel offset too
-  return {start: startEl, end: endEl};
+  return {start: startEl, end: endEl,
+          startOffsetTop: startOffsetTop, endOffsetTop: endOffsetTop};
 }
 
 function iterNodes(start) {
