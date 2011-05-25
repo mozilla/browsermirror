@@ -43,6 +43,7 @@ function sendPage(req, res, filename, vars) {
   vars._JSMIRROR_ = SERVER_ADDRESS + '/jsmirror.js';
   vars._SOCKET_IO_ = SERVER_ADDRESS + '/socket.io/socket.io.js';
   vars._WEB_SOCKET_ = SERVER_ADDRESS + '/socket.io/lib/vendor/web-socket-js/WebSocketMain.swf';
+  vars._TOKEN_ = generateToken();
   vars['Content-Type'] = vars['Content-Type'] || 'text/html';
   filename = __dirname + '/' + filename;
   fs.readFile(filename, 'utf8', function (err, data) {
@@ -123,6 +124,16 @@ io.on('connection', function (client) {
   });
 
 });
+
+var TOKEN_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+function generateToken() {
+  var s = '';
+  for (var i=0; i<10; i++) {
+    s += TOKEN_CHARS.charAt(Math.random() * TOKEN_CHARS.length);
+  }
+  return s;
+}
 
 var port = 8080;
 var hostname = 'localhost';
