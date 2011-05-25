@@ -8,26 +8,24 @@ function Channel(server, channel, receiver) {
   }
   server = parseUrl(server);
   this.receiver = receiver;
+  var transports = ['websocket', 'flashsocket', 'htmlfile', 'xhr-multipart',
+                    'xhr-polling', 'jsonp-polling'];
+  if (io.Socket.prototype.isXDomain()) {
+    // This does not seem to work cross-domain:
+    transports.splice(transports.indexOf('flashsocket'), 1);
+  }
+  if (transports.indexOf('flashsocket') != -1) {
+    WebSocket.__initialize();
+  }
   this.socket = new io.Socket(server.hostname, {
     rememberTransport: false,
     connectTimeout: 5000,
     reconnect: true,
     reconnectionDelay: 500,
-    transports: ['websocket', 'xhr-polling'],
+    transports: transports,
     port: server.port
   });
   this.socket.connect();
-  // Work around a bug with WebSocket.__initialize not being called:
-  if (! document.getElementById('webSocketFlash')) {
-    log(DEBUG, 'initing WebSocket');
-    setTimeout(function () {
-      WebSocket.__initialize();
-      setTimeout(function () {
-        document.getElementById('webSocketFlash').jsmirrorHide = true;
-        document.getElementById('webSocketContainer').jsmirrorHide = true;
-      }, 500);
-    }, 500);
-  }
   this.channel = channel;
   this.send({subscribe: channel, hello: true});
   log(DEBUG, 'created socket', this.socket);
@@ -60,7 +58,6 @@ function Base () {
 
 Base.prototype.send = function (msg) {
   /* Sends a message to the server */
-  log(INFO, 'sending message', msg);
   this.channel.send(msg);
 };
 
@@ -69,8 +66,8 @@ Base.prototype.sendChat = function (msgs) {
   this.send({chatMessages: msgs});
 };
 
-Base.prototype.sendHighlight = function (jsmirrorId) {
-  this.send({highlight: jsmirrorId});
+Base.prototype.sendHighlight = function (jsmirrorId, offsetTop, offsetLeft) {
+  this.send({highlight: {target: jsmirrorId, offsetTop: offsetTop, offsetLeft: offsetLeft}});
 };
 
 Base.prototype.getRange = function () {
@@ -138,7 +135,8 @@ Master.prototype.processCommand = function (event) {
   log(DEBUG, 'got', typeof event, event, !!event.chatMessages);
   if (event.event) {
     var realEvent = this.deserializeEvent(event.event);
-    this.dispatchEvent(realEvent, realEvent.target);
+    log(WARN, 'got event', event.event.type, event.event.target, realEvent.target);
+    this.dispatchEvent(realEvent, event.event.target);
   }
   if (event.change) {
     log(INFO, 'Received change:', event.change, 'target', event.change.target);
@@ -152,9 +150,9 @@ Master.prototype.processCommand = function (event) {
   }
   if (event.highlight) {
     log(INFO, 'Received highlight:', event.highlight);
-    var el = this.getElement(event.highlight);
+    var el = this.getElement(event.highlight.target);
     if (el) {
-      temporaryHighlight(el);
+      temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft);
     }
   }
   if (event.hello) {
@@ -202,7 +200,7 @@ Master.prototype.dispatchEvent = function (event, target) {
   }
   if (target) {
     var doDefault = target.dispatchEvent(event);
-    log(DEBUG, 'should do default', event.type, target.tagName, target.href);
+    log(DEBUG, 'should do default', doDefault, event.type, target.tagName, target.href);
     if (doDefault && event.type == 'click' && target.tagName == 'A' && target.href) {
       // Dispatching a click event never actually follows the link itself
       location.href = target.href;
@@ -298,7 +296,7 @@ Master.prototype.processChange = function (event) {
 
 Master.prototype.skipElement = function (el) {
   /* true if this element should be skipped when sending to the mirror */
-  if (el.tagName == 'SCRIPT' || el.jsmirrorHide) {
+  if (el.tagName == 'SCRIPT' || el.jsmirrorHide || el.id == 'webSocketContainer') {
     return true;
   }
   return false;
@@ -417,14 +415,13 @@ Mirror.prototype.processCommand = function (event) {
       this.panel.displayMessage(event.chatMessages[j], false);
     }
   }
-  if (event.highlightElement) {
-    var el = this.getElementById(document.body, doc.highlightElement);
+  if (event.highlight) {
+    var el = this.getElementById(document.body, event.highlight.target);
     if (el) {
-      temporaryHighlight(el);
+      temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft);
     }
   }
   if (event.range) {
-    console.log('got range', event.range);
     event.range.start = this.getElementById(document.body, event.range.start);
     event.range.end = this.getElementById(document.body, event.range.end);
     showRange(event.range, function (el) {
@@ -503,7 +500,7 @@ Mirror.prototype.setElement = function (el, serialized) {
     var existing = el.childNodes[childIndex];
     if (! existing) {
       el.appendChild(this.deserializeElement(children[i]));
-    } else if (existing.jsmirrorHide) {
+    } else if (existing.jsmirrorHide || existing.id == 'webSocketContainer') {
       offset++;
       i--;
       continue;
@@ -518,7 +515,12 @@ Mirror.prototype.setElement = function (el, serialized) {
     }
   }
   while (el.childNodes.length - offset > children.length) {
-    el.removeChild(el.childNodes[el.childNodes.length-1]);
+    var node = el.childNodes[children.length + offset];
+    if (node.jsmirrorHide || node.id == 'webSocketContainer') {
+      offset++;
+      continue;
+    }
+    el.removeChild(node);
   }
 };
 
@@ -657,7 +659,7 @@ Mirror.prototype.docEvents = [
 Mirror.prototype.catchEvent = function (event) {
   if (inHighlighting && event.type == 'click') {
     // Don't get in the way of the highlighter
-    return;
+    return false;
   }
   if (event.target) {
     // Ignore anything under a jsmirrorHide element (generally the panel)
@@ -665,17 +667,19 @@ Mirror.prototype.catchEvent = function (event) {
     while (p) {
       if (p.jsmirrorHide) {
         event.target.jsmirrorHide = true;
-        return;
+        return false;
       }
       p = p.parentNode;
     }
   }
-  if (['keydown', 'keyup', 'keypress'].indexOf(event.type) != -1 && event.ctrlKey
-      && ([114, 116].indexOf(event.charCode) != -1
-          || [9, 33, 34].indexOf(event.keyCode) != -1)) {
-    // Let it propagate: Ctrl+T, Ctrl+R, Tab, PgUp, PgDown
+  if (['keydown', 'keyup', 'keypress'].indexOf(event.type) != -1
+      && ((event.ctrlKey
+           && ([114, 116].indexOf(event.charCode) != -1
+              || [9, 33, 34].indexOf(event.keyCode) != -1))
+          || ([33, 34].indexOf(event.keyCode) != -1))) {
+    // Let it propagate: Ctrl+T, Ctrl+R, Ctrl+Tab, Ctrl+PgUp, Ctrl+PgDown, PgUp, PgDown
     // FIXME: things like scrolling (arrow keys or space) won't work, and depend on the context
-    return;
+    return false;
   }
   if (event.type == 'keypress') {
     log(INFO, 'keypress', event.charCode, event.keyCode, event.target);
@@ -688,7 +692,7 @@ Mirror.prototype.catchEvent = function (event) {
   if ((event.type == 'click' || event.type == 'keypress') &&
       (tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT')) {
     // Let the focus happen
-    return;
+    return false;
   }
   event.preventDefault();
   event.stopPropagation();
@@ -733,7 +737,8 @@ Panel.prototype.initPanel = function () {
   this.box.style.zIndex = '1000';
   this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000; color: #000">'
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
-    + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00;">&#9675;</span>'
+    + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;">&#10132;</span>'
+    + '<span id="jsmirror-view" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #0f0;">&#8597;</span>'
     + '<div id="jsmirror-container">'
     + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #006;">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
@@ -783,38 +788,28 @@ Panel.prototype.highlightListener = function (event) {
     return;
   }
   inHighlighting = false;
-  if (this.highlightedElement) {
-    this.removeHighlight();
+  if (this.cancelHighlight) {
+    this.cancelHighlight();
+    this.cancelHighlight = null;
   }
   this.highlightedElement = event.target;
-  this.highlightElement();
-  this.controller.sendHighlight(this.highlightedElement.jsmirrorId);
+  console.log('event', event.target);
+  var elPos = getElementPosition(event.target);
+  var offsetLeft = event.layerX - elPos.left;
+  var offsetTop = event.layerY - elPos.top;
+  this.cancelHighlight = temporaryHighlight(event.target, offsetTop, offsetLeft);
+  this.controller.sendHighlight(this.highlightedElement.jsmirrorId, offsetTop, offsetLeft);
   this.highlightButton.style.backgroundColor = '';
   this.highlightButton.style.color = '#f00';
-  setTimeout(function () {
-    self.removeHighlight();
-  }, 5000);
   document.removeEventListener('click', self._boundHighlightListener);
   event.preventDefault();
   event.stopPropagation();
   return true;
-  // FIXME: the click still is sent to master
-};
-
-Panel.prototype.highlightElement = function () {
-  this.oldBorder = this.highlightedElement.style.border;
-  this.highlightedElement.style.border = '3px dotted #f00';
-};
-
-Panel.prototype.removeHighlight = function () {
-  this.highlightedElement.style.border = this.oldBorder;
-  this.highlightElement = null;
-  this.oldBorder = null;
 };
 
 Panel.prototype.addChatMessage = function (message) {
   this.displayMessage(message, true);
-  this.controller.sendChat(message);
+  this.controller.sendChat([message]);
 };
 
 Panel.prototype.displayMessage = function (message, here) {
@@ -831,21 +826,56 @@ Panel.prototype.displayMessage = function (message, here) {
   this.chatDiv.appendChild(div);
 };
 
-function temporaryHighlight(el) {
-  var oldBorder = el.style.border;
-  el.style.border = '3px dotted #f00';
-  setTimeout(function () {
-    el.style.border = oldBorder;
-  }, 5000);
+var TEMPORARY_HIGHLIGHT_DELAY = 10000;
+
+function temporaryHighlight(el, offsetTop, offsetLeft) {
+  offsetTop = offsetTop || 0;
+  offsetLeft = offsetLeft || 0;
+  var size = 100;
+  var elPos = getElementPosition(el);
+  var circle = document.createElement('div');
+  circle.style.backgroundColor = 'transparent';
+  circle.style.border = '2px solid #f00';
+  circle.style.position = 'absolute';
+  circle.style.width = size + 'px';
+  circle.style.height = size + 'px';
+  circle.style.borderRadius = (size/2) + 'px';
+  circle.style.top = (elPos.top + offsetTop - (size/2)) + 'px';
+  circle.style.left = (elPos.left + offsetLeft - (size/2)) + 'px';
+  circle.jsmirrorHide = true;
+  document.body.appendChild(circle);
+  function canceller() {
+    if (circle !== null) {
+      document.body.removeChild(circle);
+      circle = null;
+    }
+  };
+  setTimeout(canceller, TEMPORARY_HIGHLIGHT_DELAY);
+  return canceller;
 };
+
+function getElementPosition(el) {
+  var top = 0;
+  var left = 0;
+  while (el) {
+    if (el.offsetTop) {
+      top += el.offsetTop;
+    }
+    if (el.offsetLeft) {
+      left += el.offsetLeft;
+    }
+    el = el.offsetParent;
+  }
+  return {top: top, left: left};
+}
 
 function checkBookmarklet() {
   if (window.runBookmarklet) {
     doOnLoad(function () {
       var destination = window.runBookmarklet.app;
+      var token = window.runBookmarklet.token || makeSessionToken();
       delete window.runBookmarklet;
-      // FIXME: don't hardcode:
-      window.master = new Master(destination, makeSessionToken());
+      window.master = new Master(destination, token);
     });
   }
 }
@@ -997,7 +1027,7 @@ function makeId() {
 }
 makeId.counter=0;
 
-VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; ERROR = 50; CRITICAL = 60;
+VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; WARN = ERROR = 50; CRITICAL = 60;
 LOG_LEVEL = DEBUG;
 
 function log(level) {
@@ -1113,74 +1143,14 @@ function containsElement(container, subelement) {
   return false;
 }
 
-function showRange2(range, elCallback) {
-  /* Given something from expandRange(), create elements encompassing that range
-     and call elCallback on each such element (which may, for example, change
-     the color of the elements */
-  var start = range.start;
-  if (start == range.end && range.startText == 'inner' && range.endText == 'inner') {
-    // A special case, when the range is entirely within one element
-    start = splitTextBetween(start, range.startOffset, range.endOffset);
-    elCallback(start);
-    return;
-  }
-  console.log('start', start.jsmirrorId, range.end.jsmirrorId);
-  if (range.startText == 'inner') {
-    // The range starts within start
-    start = splitTextAfter(start.childNodes[0], range.startOffset);
-  } else if (range.startText == 'after') {
-    // The range starts after start
-    start = splitTextAfter(start.nextSibling, range.startOffset);
-  } else {
-    // FIXME: I guess this case the range is inclusive?
-    start = start.childNodes[range.startOffset];
-  }
-  elCallback(start);
-  var el = start; j=0;
-  while (true) {
-    if (el.parentNode == range.end) {
-      break;
-    }
-    j++;
-    if (j<50)
-    console.log('interior', (el.innerHTML || el.nodeValue), el.jsmirrorId, 'dest', range.end.jsmirrorId);
-    el = getNextElement(el);
-    if (el === null) {
-      console.log('Somehow fell out of range');
-      break;
-    }
-    elCallback(el);
-  }
-  if (range.endText == 'inner') {
-    // The range starts within end
-    el = splitText(range.end.childNodes[0], range.endOffset);
-    console.log('interior text', el.innerHTML);
-    elCallback(el);
-  } else if (range.endText == 'after') {
-    // The range starts after end
-    console.log('last element', el);
-    elCallback(range.end);
-    el = splitText(range.end.nextSibling, range.endOffset);
-    console.log('trailing text', el.innerHTML);
-    elCallback(el);
-  } else {
-    for (var i=0; i<=range.endOffset; i++) {
-      console.log('trailing nodes', i, range.end.childNodes[i]);
-      elCallback(range.end.childNodes[i]);
-    }
-  }
-}
-
 function getNextElement(el) {
   if (el.childNodes && el.childNodes.length) {
-    //console.log('Looking in children', el, el.childNodes[0]);
     return el.childNodes[0];
   }
   while (! el.nextSibling) {
-    //console.log('looking in el parent for next', el, el.parentNode);
     el = el.parentNode;
     if (! el) {
-      console.log('no parent');
+      log(WARN, 'no parent');
       return null;
     }
   }
@@ -1267,7 +1237,7 @@ function splitTextBetween(el, start, end) {
       if (inEnd) {
         break;
       }
-      console.log('Unexpected element', node);
+      log(WARN, 'Unexpected element', node);
       continue;
     }
     textNodes.push(node);
