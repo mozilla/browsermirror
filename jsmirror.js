@@ -384,7 +384,6 @@ Master.prototype.processChange = function (event) {
     {} // detail
   );
   target.dispatchEvent(realEvent);
-  console.log('onchange', target, target.onchange);
   if (target.onchange) {
     target.onchange(realEvent);
   }
@@ -826,6 +825,8 @@ Mirror.prototype.catchEvent = function (event) {
   return true;
 };
 
+// FIXME: this should batch changes with a delay, so typing doesn't create an excessive
+// number of events
 Mirror.prototype.changeEvent = function (event) {
   log(DEBUG, 'got change', event, event.target, event.target.value);
   this.sendChange(
@@ -1053,7 +1054,7 @@ function getScreenRange() {
     if (! next) {
       break;
     }
-    if (next.jsmirrorHide) {
+    if (next.jsmirrorHide || (! next.jsmirrorId)) {
       continue;
     }
     if (next.nodeType != document.ELEMENT_NODE) {
