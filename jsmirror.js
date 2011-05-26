@@ -915,7 +915,7 @@ Panel.prototype.initPanel = function () {
       self.viewButton.style.color = '#0f0';
       self.controller.hideScreen();
     }
-  });
+  }, false);
   this.chatDiv = document.getElementById('jsmirror-chat');
   var chatInput = document.getElementById('jsmirror-input');
   chatInput.addEventListener('keypress', function (event) {
