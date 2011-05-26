@@ -191,10 +191,14 @@ Master.prototype.sendDoc = function (onsuccess) {
   data = {doc: data};
   var range = this.getRange();
   if (range) {
-    range = expandRange(range);
-    range.start = range.start.jsmirrorId;
-    range.end = range.end.jsmirrorId;
-    data.range = range;
+    // Sometimes everything is the same, and doesn't really represent
+    // a useful range...
+    if (range.end != range.start || range.startOffset != range.endOffset) {
+      range = expandRange(range);
+      range.start = range.start.jsmirrorId;
+      range.end = range.end.jsmirrorId;
+      data.range = range;
+    }
   }
   data.screen = getScreenRange();
   data.screen.start = data.screen.start.jsmirrorId;
@@ -371,6 +375,19 @@ Master.prototype.processChange = function (event) {
   var target = this.getElement(event.target);
   log(INFO, 'Updating', target, 'to value', event.value);
   target.value = event.value;
+  var realEvent = document.createEvent('UIEvent');
+  realEvent.initUIEvent(
+    'change',
+    true, // canBubble
+    true, // cancelable
+    window, // view
+    {} // detail
+  );
+  target.dispatchEvent(realEvent);
+  console.log('onchange', target, target.onchange);
+  if (target.onchange) {
+    target.onchange(realEvent);
+  }
 };
 
 Master.prototype.skipElement = function (el) {
@@ -528,6 +545,9 @@ Mirror.prototype.processCommand = function (event) {
 Mirror.prototype.setDoc = function (doc) {
   if (doc.href && this.lastHref !== null && doc.href != this.lastHref) {
     location.reload();
+  }
+  if (doc.href) {
+    this.lastHref = doc.href;
   }
   if (doc.head) {
     this.setElement(document.head, doc.head);
@@ -705,7 +725,7 @@ Mirror.prototype.deserializeElement = function (data) {
     }
   }
   el.jsmirrorId = jsmirrorId;
-  if ((tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT')
+  if ((tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT' || tagName == 'OPTION')
       && el.id != 'jsmirror-input') {
     el.addEventListener('change', this._boundChangeEvent, false);
   }
@@ -788,9 +808,9 @@ Mirror.prototype.catchEvent = function (event) {
     // FIXME: things like scrolling (arrow keys or space) won't work, and depend on the context
     return false;
   }
-  if (event.type == 'keypress') {
-    log(INFO, 'keypress', event.charCode, event.keyCode, event.target);
-  }
+  //if (event.type == 'keypress') {
+  //  log(INFO, 'keypress', event.charCode, event.keyCode, event.target);
+  //}
   var serialized = this.serializeEvent(event);
   this.sendEvent(serialized);
   // Maybe should check event.cancelable -- stopPropagation doesn't mean anything if
@@ -1249,6 +1269,10 @@ function showRange(range, elCallback) {
   while (true) {
     elCallback(pos);
     pos = getNextElement(pos);
+    if (pos === null) {
+      log(WARN, 'pos fell out to null', range.start);
+      break;
+    }
     while (containsElement(pos, range.end)) {
       pos = pos.childNodes[0];
     }
