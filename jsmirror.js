@@ -1210,8 +1210,11 @@ function log(level) {
     method = 'error';
   } else if (level >= INFO && console.info) {
     method = 'info';
-  } else {
+  } else if (console.debug) {
     method = 'debug';
+  }
+  if (! console[method]) {
+    method = 'log';
   }
   console[method].apply(console, args);
 }
