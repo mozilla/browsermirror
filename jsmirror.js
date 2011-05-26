@@ -212,6 +212,9 @@ Master.prototype.sendDoc = function (onsuccess) {
   data.screen.end = data.screen.end.jsmirrorId;
   cacheData = JSON.stringify(data);
   if (cacheData != this.lastSentMessage) {
+    // There are cases when other changes need to be fixed up by resending
+    // the entire document; kind of a shot-gun fix for these:
+    data.doc = docData;
     this.send(data);
     this.lastSentMessage = cacheData;
   }
