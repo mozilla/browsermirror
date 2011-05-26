@@ -187,8 +187,15 @@ Master.prototype = new Base();
 Master.prototype.sendDoc = function (onsuccess) {
   /* Sends a complete copy of the current document to the server */
   var self = this;
-  var data = this.serializeDocument();
-  data = {doc: data};
+  var docData = this.serializeDocument();
+  var data;
+  var cacheData = JSON.stringify(docData);
+  if (cacheData != this.lastSentDoc) {
+    data = {doc: docData};
+    this.lastSentDoc = cacheData;
+  } else {
+    data = {};
+  }
   var range = this.getRange();
   if (range) {
     // Sometimes everything is the same, and doesn't really represent
@@ -203,14 +210,10 @@ Master.prototype.sendDoc = function (onsuccess) {
   data.screen = getScreenRange();
   data.screen.start = data.screen.start.jsmirrorId;
   data.screen.end = data.screen.end.jsmirrorId;
-  var cacheData = JSON.stringify(data);
-  var req;
-  if (cacheData !== this.lastSentDoc) {
-    log(DEBUG, 'Sending DOM updates');
+  cacheData = JSON.stringify(data);
+  if (cacheData != this.lastSentMessage) {
     this.send(data);
-    this.lastSentDoc = cacheData;
-  } else {
-    log(VERBOSE, 'skipping DOM updates, no change');
+    this.lastSentMessage = cacheData;
   }
 };
 
@@ -241,6 +244,7 @@ Master.prototype.processCommand = function (event) {
   if (event.hello) {
     // Make sure to send the doc again:
     this.lastSentDoc = null;
+    this.lastSentMessage = null;
   }
 };
 
@@ -804,14 +808,18 @@ Mirror.prototype.catchEvent = function (event) {
       p = p.parentNode;
     }
   }
-  if (['keydown', 'keyup', 'keypress'].indexOf(event.type) != -1
-      && ((event.ctrlKey
-           && ([114, 116].indexOf(event.charCode) != -1
-              || [9, 33, 34].indexOf(event.keyCode) != -1))
-          || ([33, 34].indexOf(event.keyCode) != -1))) {
-    // Let it propagate: Ctrl+T, Ctrl+R, Ctrl+Tab, Ctrl+PgUp, Ctrl+PgDown, PgUp, PgDown
-    // FIXME: things like scrolling (arrow keys or space) won't work, and depend on the context
-    return false;
+  if (['keydown', 'keyup', 'keypress'].indexOf(event.type) != -1) {
+    for (var i=0; i<this.IGNORE_KEYPRESSES.length; i++) {
+      var k = this.IGNORE_KEYPRESSES[i];
+      console.log('check key', k, event.ctrlKey, event.shiftKey, event.charCode, event.keyCode);
+      if (((!k.ctrlKey) || event.ctrlKey) &&
+          ((!k.shiftKey) || event.shiftKey) &&
+          ((!k.charCode) || k.charCode == event.charCode) &&
+          ((!k.keyCode) || k.keyCode == event.keyCode)) {
+        // There's a match
+        return false;
+      }
+    }
   }
   //if (event.type == 'keypress') {
   //  log(INFO, 'keypress', event.charCode, event.keyCode, event.target);
@@ -830,6 +838,18 @@ Mirror.prototype.catchEvent = function (event) {
   event.stopPropagation();
   return true;
 };
+
+Mirror.prototype.IGNORE_KEYPRESSES = [
+  {ctrlKey: true, charCode: 116}, // Ctrl+T
+  {ctrlKey: true, charCode: 114}, // Ctrl+R
+  {ctrlKey: true, charCode: 119}, // Ctrl+W
+  {ctrlKey: true, keyCode: 9}, // Ctrl+Tab
+  {ctrlKey: true, keyCode: 33}, // Ctrl+PgUp
+  {ctrlKey: true, keyCode: 34}, // Ctrl+PgDown
+  {ctrlKey: true, shiftKey: true, charCode: 75}, // Ctrl+Shift+K
+  {keyCode: 33}, // PgUp
+  {keyCode: 34} // pgDown
+];
 
 // FIXME: this should batch changes with a delay, so typing doesn't create an excessive
 // number of events
