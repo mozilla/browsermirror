@@ -116,6 +116,56 @@ Base.prototype.hideScreen = function () {
   }
 };
 
+var TEMPORARY_HIGHLIGHT_DELAY = 10000;
+
+Base.prototype.temporaryHighlight = function (el, offsetTop, offsetLeft, mode) {
+  offsetTop = offsetTop || 0;
+  offsetLeft = offsetLeft || 0;
+  var size = 100;
+  var elPos = getElementPosition(el);
+  var circle = document.createElement('div');
+  circle.style.backgroundColor = 'transparent';
+  circle.style.border = '2px solid #f00';
+  circle.style.position = 'absolute';
+  circle.style.width = size + 'px';
+  circle.style.height = size + 'px';
+  circle.style.borderRadius = (size/2) + 'px';
+  circle.style.top = (elPos.top + offsetTop - (size/2)) + 'px';
+  circle.style.left = (elPos.left + offsetLeft - (size/2)) + 'px';
+  circle.jsmirrorHide = true;
+  document.body.appendChild(circle);
+  function canceller() {
+    if (circle !== null) {
+      document.body.removeChild(circle);
+      circle = null;
+    }
+  };
+  setTimeout(canceller, TEMPORARY_HIGHLIGHT_DELAY);
+  if (mode != 'redisplay') {
+    var message = document.createElement('div');
+    message.innerHTML = '<a href="#" style="color: #009; text-decoration: underline">place noted</a>';
+    var anchor = message.getElementsByTagName('a')[0];
+    anchor.setAttribute('data-place', JSON.stringify({
+      element: el.jsmirrorId,
+      offsetTop: offsetTop,
+      offsetLeft: offsetLeft
+    }));
+    var self = this;
+    // FIXME: this is a closure, but almost doesn't need to be.
+    // If it matters at all?
+    anchor.addEventListener('click', function (event) {
+      var anchor = event.target;
+      var data = JSON.parse(anchor.getAttribute('data-place'));
+      var el = self.getElement(data.element);
+      self.temporaryHighlight(el, data.offsetTop, data.offsetLeft, 'redisplay');
+      event.preventDefault();
+      event.stopPropagation();
+    }, false);
+    this.panel.displayMessage(message, (mode == 'local'));
+  }
+  return canceller;
+};
+
 /************************************************************
  * Master: the browser that is sending the screen
  */
@@ -181,7 +231,7 @@ Master.prototype.processCommand = function (event) {
     log(INFO, 'Received highlight:', event.highlight);
     var el = this.getElement(event.highlight.target);
     if (el) {
-      temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft);
+      this.temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft, 'remote');
     }
   }
   if (event.hello) {
@@ -445,25 +495,32 @@ Mirror.prototype.processCommand = function (event) {
     }
   }
   if (event.highlight) {
-    var el = this.getElement(document.body, event.highlight.target);
+    log(INFO, 'Received highlight:', event.highlight);
+    var el = this.getElement(event.highlight.target);
     if (el) {
-      temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft);
+      this.temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft, 'remote');
     }
   }
-  if (event.range) {
-    event.range.start = this.getElement(document.body, event.range.start);
-    event.range.end = this.getElement(document.body, event.range.end);
-    showRange(event.range, function (el) {
-      if (el.nodeType == document.ELEMENT_NODE && (! el.jsmirrorHide)) {
-        el.style.backgroundColor = '#ff9';
-        //el.style.borderLeft = '1px solid #f00';
-        //el.style.borderRight = '1px solid #0f0';
-        //el.style.borderTop = '1px solid #00f';
-        //el.style.borderBottom = '1px solid #f0f';
-      }
-    });
+  if (event.range && event.range.start) {
+    log(INFO, 'Received range:', event.range);
+    event.range.start = this.getElement(event.range.start);
+    event.range.end = this.getElement(event.range.end);
+    if ((! event.range.start) || (! event.range.end)) {
+      log(WARN, 'Bad range');
+    } else {
+      showRange(event.range, function (el) {
+        if (el.nodeType == document.ELEMENT_NODE && (! el.jsmirrorHide)) {
+          el.style.backgroundColor = '#ff9';
+          //el.style.borderLeft = '1px solid #f00';
+          //el.style.borderRight = '1px solid #0f0';
+          //el.style.borderTop = '1px solid #00f';
+          //el.style.borderBottom = '1px solid #f0f';
+        }
+      });
+    }
   }
   if (event.screen) {
+    log(INFO, 'Received screen:', event.screen);
     this.updateScreen(event.screen);
   }
 };
@@ -798,14 +855,17 @@ Panel.prototype.initPanel = function () {
   var hideContainer = document.getElementById('jsmirror-container');
   var hideButton = document.getElementById('jsmirror-hide');
   hideButton.addEventListener('click', function () {
+    var borderBox = self.box.getElementsByTagName('div')[0];
     if (hideContainer.style.display) {
       hideContainer.style.display = "";
       hideButton.innerHTML = '&#215;';
       self.box.style.width = "7em";
+      borderBox.style.border = '2px solid #000';
     } else {
       hideContainer.style.display = "none";
       hideButton.innerHTML = '+';
       self.box.style.width = "";
+      borderBox.style.border = '';
     }
   }, false);
   this.highlightButton = document.getElementById('jsmirror-highlight');
@@ -860,7 +920,7 @@ Panel.prototype.highlightListener = function (event) {
   var elPos = getElementPosition(event.target);
   var offsetLeft = event.layerX - elPos.left;
   var offsetTop = event.layerY - elPos.top;
-  this.cancelHighlight = temporaryHighlight(event.target, offsetTop, offsetLeft);
+  this.cancelHighlight = this.controller.temporaryHighlight(event.target, offsetTop, offsetLeft, 'local');
   this.controller.sendHighlight(this.highlightedElement.jsmirrorId, offsetTop, offsetLeft);
   this.highlightButton.style.backgroundColor = '';
   this.highlightButton.style.color = '#f00';
@@ -878,43 +938,23 @@ Panel.prototype.addChatMessage = function (message) {
 Panel.prototype.displayMessage = function (message, here) {
   /* Displays a chat message; if here is true then it's a local message,
      otherwise remote */
-  var div = document.createElement('div');
-  div.style.margin = '0';
-  div.style.padding = '2px';
-  div.style.borderBottom = '1px solid #aaa';
-  if (! here) {
-    div.style.backgroundColor = '#fff';
-  }
-  div.appendChild(document.createTextNode(message));
-  this.chatDiv.appendChild(div);
-};
-
-var TEMPORARY_HIGHLIGHT_DELAY = 10000;
-
-function temporaryHighlight(el, offsetTop, offsetLeft) {
-  offsetTop = offsetTop || 0;
-  offsetLeft = offsetLeft || 0;
-  var size = 100;
-  var elPos = getElementPosition(el);
-  var circle = document.createElement('div');
-  circle.style.backgroundColor = 'transparent';
-  circle.style.border = '2px solid #f00';
-  circle.style.position = 'absolute';
-  circle.style.width = size + 'px';
-  circle.style.height = size + 'px';
-  circle.style.borderRadius = (size/2) + 'px';
-  circle.style.top = (elPos.top + offsetTop - (size/2)) + 'px';
-  circle.style.left = (elPos.left + offsetLeft - (size/2)) + 'px';
-  circle.jsmirrorHide = true;
-  document.body.appendChild(circle);
-  function canceller() {
-    if (circle !== null) {
-      document.body.removeChild(circle);
-      circle = null;
+  var div;
+  if (typeof message == 'string') {
+    div = document.createElement('div');
+    div.style.margin = '0';
+    div.style.padding = '2px';
+    div.style.borderBottom = '1px solid #aaa';
+    if (! here) {
+      div.style.backgroundColor = '#fff';
     }
-  };
-  setTimeout(canceller, TEMPORARY_HIGHLIGHT_DELAY);
-  return canceller;
+    div.appendChild(document.createTextNode(message));
+  } else {
+    div = message;
+    if (! here) {
+      div.style.backgroundColor = '#fff';
+    }
+  }
+  this.chatDiv.appendChild(div);
 };
 
 function createVisualFrame(top, bottom) {
