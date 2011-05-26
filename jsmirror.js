@@ -1216,7 +1216,12 @@ function log(level) {
   if (! console[method]) {
     method = 'log';
   }
-  console[method].apply(console, args);
+  if (! console[method].apply) {
+    // On Fennec I'm getting this...
+    console.log(args);
+  } else {
+    console[method].apply(console, args);
+  }
 }
 
 function expandRange(range) {
