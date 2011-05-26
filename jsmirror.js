@@ -1309,6 +1309,8 @@ function showRange(range, elCallback) {
       break;
     }
     while (containsElement(pos, range.end)) {
+      // FIXME: at some point pos might be a TextNode that needs to be wrapped in
+      // a span.
       pos = pos.childNodes[0];
     }
     if (pos == range.end) {
