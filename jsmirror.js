@@ -284,6 +284,9 @@ Master.prototype.dispatchEvent = function (event, target) {
   if (target) {
     var doDefault = target.dispatchEvent(event);
     log(DEBUG, 'should do default', doDefault, event.type, target.tagName, target.href);
+    if (doDefault && target['on'+event.type]) {
+      target['on'+event.type](event);
+    }
     if (doDefault && event.type == 'click' && target.tagName == 'A' && target.href) {
       // Dispatching a click event never actually follows the link itself
       location.href = target.href;
@@ -417,6 +420,9 @@ Master.prototype.serializeElement = function (el) {
   if (! el.jsmirrorId) {
     el.jsmirrorId = makeId();
     this.elements[el.jsmirrorId] = el;
+  }
+  if (el.tagName == 'CANVAS') {
+    return ['IMG', el.jsmirrorId, {src: el.toDataURL('image/png')}, []];
   }
   var attrs = this.serializeAttributes(el);
   // FIXME: I don't understand this, but there's a div that is hidden on Facebook
