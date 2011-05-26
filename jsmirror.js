@@ -557,6 +557,7 @@ Mirror.prototype.processCommand = function (event) {
 Mirror.prototype.setDoc = function (doc) {
   if (doc.href && this.lastHref !== null && doc.href != this.lastHref) {
     location.reload();
+    return;
   }
   if (doc.href) {
     this.lastHref = doc.href;
