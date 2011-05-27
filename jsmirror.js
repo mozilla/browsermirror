@@ -79,6 +79,10 @@ Base.prototype.getRange = function () {
   if (! range) {
     return null;
   }
+  if (range.end == range.start && range.startOffset == range.endOffset) {
+    // Not a useful range
+    return null;
+  }
   return {startContainer: range.startContainer,
           endContainer: range.endContainer,
           startOffset: range.startOffset,
@@ -166,6 +170,17 @@ Base.prototype.temporaryHighlight = function (el, offsetTop, offsetLeft, mode) {
   return canceller;
 };
 
+Base.prototype.updateScreen = function (newScreen) {
+  if (this.lastScreen && this.lastScreen.element) {
+    removeVisualFrame(this.lastScreen.element);
+    this.lastScreen = null;
+  }
+  this.lastScreen = newScreen;
+  if (this.panel.viewing) {
+    this.showScreen();
+  }
+};
+
 /************************************************************
  * Master: the browser that is sending the screen
  */
@@ -200,12 +215,10 @@ Master.prototype.sendDoc = function (onsuccess) {
   if (range) {
     // Sometimes everything is the same, and doesn't really represent
     // a useful range...
-    if (range.end != range.start || range.startOffset != range.endOffset) {
-      range = expandRange(range);
-      range.start = range.start.jsmirrorId;
-      range.end = range.end.jsmirrorId;
-      data.range = range;
-    }
+    range = expandRange(range);
+    range.start = range.start.jsmirrorId;
+    range.end = range.end.jsmirrorId;
+    data.range = range;
   }
   data.screen = getScreenRange();
   data.screen.start = data.screen.start.jsmirrorId;
@@ -243,6 +256,10 @@ Master.prototype.processCommand = function (event) {
     if (el) {
       this.temporaryHighlight(el, event.highlight.offsetTop, event.highlight.offsetLeft, 'remote');
     }
+  }
+  if (event.screen) {
+    log(INFO, 'Received screen:', event.screen);
+    this.updateScreen(event.screen);
   }
   if (event.hello) {
     // Make sure to send the doc again:
@@ -500,6 +517,8 @@ function Mirror(server, channel) {
   this._boundChangeEvent = this.changeEvent.bind(this);
   this.panel = new Panel(this, false);
   this.lastHref = null;
+  this._boundSendStatus = this.sendStatus.bind(this);
+  setInterval(this._boundSendStatus, 1000);
 }
 
 Mirror.prototype = new Base();
@@ -554,6 +573,22 @@ Mirror.prototype.processCommand = function (event) {
   }
 };
 
+Mirror.prototype.sendStatus = function () {
+  var data = {};
+  var range = this.getRange();
+  if (range) {
+    data.range = range;
+  }
+  data.screen = getScreenRange();
+  data.screen.start = data.screen.start.jsmirrorId;
+  data.screen.end = data.screen.end.jsmirrorId;
+  var cacheData = JSON.stringify(data);
+  if (cacheData != this.lastSentMessage) {
+    this.send(data);
+    this.lastSentMessage = cacheData;
+  }
+};
+
 Mirror.prototype.setDoc = function (doc) {
   if (doc.href && this.lastHref !== null && doc.href != this.lastHref) {
     location.reload();
@@ -581,17 +616,6 @@ Mirror.prototype.setDoc = function (doc) {
     for (var i=0; i<doc.chatMessages.length; i++) {
       this.panel.displayMessage(doc.chatMessages[i], false);
     }
-  }
-};
-
-Mirror.prototype.updateScreen = function (newScreen) {
-  if (this.lastScreen && this.lastScreen.element) {
-    removeVisualFrame(this.lastScreen.element);
-    this.lastScreen = null;
-  }
-  this.lastScreen = newScreen;
-  if (this.panel.viewing) {
-    this.showScreen();
   }
 };
 
