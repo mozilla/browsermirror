@@ -892,7 +892,7 @@ Panel.prototype.initPanel = function () {
   this.box.style.right = '0.5em';
   this.box.style.height = '10em';
   this.box.style.width = '7em';
-  this.box.style.zIndex = '1000';
+  this.box.style.zIndex = '10001';
   this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000; color: #000">'
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
     + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
@@ -969,8 +969,8 @@ Panel.prototype.highlightListener = function (event) {
   }
   this.highlightedElement = event.target;
   var elPos = getElementPosition(event.target);
-  var offsetLeft = event.layerX - elPos.left;
-  var offsetTop = event.layerY - elPos.top;
+  var offsetLeft = event.pageX - elPos.left;
+  var offsetTop = event.pageY - elPos.top;
   this.cancelHighlight = this.controller.temporaryHighlight(event.target, offsetTop, offsetLeft, 'local');
   this.controller.sendHighlight(this.highlightedElement.jsmirrorId, offsetTop, offsetLeft);
   this.highlightButton.style.backgroundColor = '';
@@ -1017,6 +1017,7 @@ function createVisualFrame(top, bottom) {
     div.style.left = left + 'px';
     div.style.top = top + 'px';
     div.style.borderLeft = '3px solid #f00';
+    div.style.zIndex = '10000';
     div.jsmirrorHide = true;
     document.body.appendChild(div);
     return div;
