@@ -181,6 +181,39 @@ Base.prototype.updateScreen = function (newScreen) {
   }
 };
 
+Base.prototype.updateScreenArrow = function () {
+  // Check if the screen is above or below current screen...
+  if ((! this.lastScreen) || (! this.lastScreen.start)) {
+    return;
+  }
+  var top = getElementPosition(this.getElement(this.lastScreen.start)).top
+            + this.lastScreen.startOffsetTop;
+  var bottom = getElementPosition(this.getElement(this.lastScreen.end)).top
+               + this.lastScreen.endOffsetTop;
+  var myTop = window.pageYOffset;
+  var myBottom = window.pageYOffset + window.innerHeight;
+  var myHeight = window.innerHeight;
+  var arrow = String.fromCharCode(8597);
+  if (top < myTop && bottom < myBottom) {
+    // Up
+    if ((myTop - top) > myHeight) {
+      arrow = String.fromCharCode(8607);
+    } else {
+      // Single up arrow
+      arrow = String.fromCharCode(8593);
+    }
+  } else if (top > myTop && bottom > myBottom) {
+    // Down
+    if ((top - myTop) > myHeight) {
+      arrow = String.fromCharCode(8609);
+    } else {
+      // Single down arrow
+      arrow = String.fromCharCode(8595);
+    }
+  }
+  document.getElementById('jsmirror-view').innerHTML = arrow;
+};
+
 /************************************************************
  * Master: the browser that is sending the screen
  */
@@ -195,6 +228,7 @@ function Master(server, channel) {
   this.panel = new Panel(this, true);
   this._boundSendDoc = this.sendDoc.bind(this);
   setInterval(this._boundSendDoc, 1000);
+  setInterval(this.updateScreenArrow.bind(this), 1200);
 }
 
 Master.prototype = new Base();
@@ -519,6 +553,7 @@ function Mirror(server, channel) {
   this.lastHref = null;
   this._boundSendStatus = this.sendStatus.bind(this);
   setInterval(this._boundSendStatus, 1000);
+  setInterval(this.updateScreenArrow.bind(this), 1200);
 }
 
 Mirror.prototype = new Base();
@@ -580,8 +615,13 @@ Mirror.prototype.sendStatus = function () {
     data.range = range;
   }
   data.screen = getScreenRange();
-  data.screen.start = data.screen.start.jsmirrorId;
-  data.screen.end = data.screen.end.jsmirrorId;
+  if ((! data.screen) || (! data.screen.start) || (! data.screen.start.jsmirrorId)) {
+    // Screen is rearranging...
+    delete data.screen;
+  } else {
+    data.screen.start = data.screen.start.jsmirrorId;
+    data.screen.end = data.screen.end.jsmirrorId;
+  }
   var cacheData = JSON.stringify(data);
   if (cacheData != this.lastSentMessage) {
     this.send(data);
@@ -839,7 +879,6 @@ Mirror.prototype.catchEvent = function (event) {
   if (['keydown', 'keyup', 'keypress'].indexOf(event.type) != -1) {
     for (var i=0; i<this.IGNORE_KEYPRESSES.length; i++) {
       var k = this.IGNORE_KEYPRESSES[i];
-      console.log('check key', k, event.ctrlKey, event.shiftKey, event.charCode, event.keyCode);
       if (((!k.ctrlKey) || event.ctrlKey) &&
           ((!k.shiftKey) || event.shiftKey) &&
           ((!k.charCode) || k.charCode == event.charCode) &&
@@ -1097,7 +1136,7 @@ function getScreenRange() {
   /* Returns {start, end} where these elements are the closest ones
      to the top and bottom of the currently-visible screen. */
   var start = window.pageYOffset;
-  var end = start + document.body.clientHeight;
+  var end = start + window.innerHeight;
   var nodes = iterNodes(document.body);
   var atStart = true;
   var startEl = null;
@@ -1266,7 +1305,7 @@ function log(level) {
     method = 'log';
   }
   if (! console[method].apply) {
-    // On Fennec I'm getting this...
+    // On Fennec I'm getting problems with console[method].apply
     console.log(args);
   } else {
     console[method].apply(console, args);
