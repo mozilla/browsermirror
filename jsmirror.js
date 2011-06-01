@@ -14,6 +14,7 @@ function Channel(server, channel, receiver) {
     // This does not seem to work cross-domain:
     transports.splice(transports.indexOf('flashsocket'), 1);
   }
+  transports = ['xhr-polling'];
   if (transports.indexOf('flashsocket') != -1) {
     WebSocket.__initialize();
   }
@@ -29,7 +30,6 @@ function Channel(server, channel, receiver) {
   this.socket.on('reconnect', this.receiver.reconnect.bind(this.receiver));
   this.socket.connect();
   this.channel = channel;
-  console.log('saying hello');
   this.send({subscribe: channel, hello: true});
   log(DEBUG, 'created socket', this.socket);
   var self = this;
@@ -232,9 +232,50 @@ function Master(server, channel) {
   this._boundSendDoc = this.sendDoc.bind(this);
   setInterval(this._boundSendDoc, 1000);
   setInterval(this.updateScreenArrow.bind(this), 1200);
+  var listener = this.modifiedEvent.bind(this);
+  document.addEventListener('DOMSubtreeModified', listener, true);
+  //document.addEventListener('DOMNodeInserted', listener, true);
+  //document.addEventListener('DOMNodeRemoved', listener, true);
+  this.pendingChanges = [];
+  this.pendingChangeTimer = null;
 }
 
 Master.prototype = new Base();
+
+Master.prototype.modifiedEvent = function (event) {
+  var target = event.target;
+  while (! target.jsmirrorId) {
+    target = target.parentNode;
+    if (! target) {
+      log(WARN, 'Fell out of page looking for jsmirrorId', event.target, event.target.jsmirrorId);
+      this.reconnect();
+      return;
+    }
+  }
+  if (this.pendingChanges.indexOf(target.jsmirrorId) != -1) {
+    // We already have this change waiting
+    return;
+  }
+  this.pendingChanges.push(target.jsmirrorId);
+  var self = this;
+  if (this.pendingChangeTimer === null) {
+    this.pendingChangeTimer = setTimeout(function () {
+      self.pendingChangeTimer = null;
+      var message = {};
+      for (var i=0; i<self.pendingChanges.length; i++) {
+        var id = self.pendingChanges[i];
+        var el = self.getElement(id);
+        if (! el) {
+          log(DEBUG, 'Element disappeared:', id);
+          continue;
+        }
+        message[id] = self.serializeElement(el);
+      }
+      self.pendingChanges = [];
+      self.send({updates: message});
+    }, 1000);
+  }
+};
 
 Master.prototype.sendDoc = function (onsuccess) {
   /* Sends a complete copy of the current document to the server */
@@ -242,7 +283,7 @@ Master.prototype.sendDoc = function (onsuccess) {
   var docData = this.serializeDocument();
   var data;
   var cacheData = JSON.stringify(docData);
-  if (cacheData != this.lastSentDoc) {
+  if (! this.lastSentDoc) { //(! this.lastSentDoc) && cacheData != this.lastSentDoc) {
     data = {doc: docData};
     this.lastSentDoc = cacheData;
   } else {
@@ -264,7 +305,7 @@ Master.prototype.sendDoc = function (onsuccess) {
   if (cacheData != this.lastSentMessage) {
     // There are cases when other changes need to be fixed up by resending
     // the entire document; kind of a shot-gun fix for these:
-    data.doc = docData;
+    //data.doc = docData;
     this.send(data);
     this.lastSentMessage = cacheData;
   }
@@ -578,6 +619,19 @@ Mirror.prototype.processCommand = function (event) {
   log(DEBUG, 'got message', JSON.stringify(event).substr(0, 70));
   if (event.doc) {
     this.setDoc(event.doc);
+  }
+  if (event.updates) {
+    for (var id in event.updates) {
+      if (! event.updates.hasOwnProperty(id)) {
+        continue;
+      }
+      var replaceEl = this.getElement(id);
+      if (! replaceEl) {
+        log(WARN, 'Got unknown element in update:', id);
+        continue;
+      }
+      this.setElement(replaceEl, event.updates[id]);
+    }
   }
   if (event.chatMessages) {
     log(INFO, 'Received chat message:', event.chatMessages);
