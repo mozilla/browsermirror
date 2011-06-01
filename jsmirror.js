@@ -1019,10 +1019,10 @@ Panel.prototype.initPanel = function () {
     self.viewing = !self.viewing;
     if (self.viewing) {
       self.viewButton.style.backgroundColor = '#0f0';
-      self.viewButton.style.color = '#fff';
+      self.viewButton.style.color = '#000';
       self.controller.showScreen(true);
     } else {
-      self.viewButton.style.backgroundColor = '#ddf';
+      self.viewButton.style.backgroundColor = 'transparent';
       self.viewButton.style.color = '#0f0';
       self.controller.hideScreen();
     }
