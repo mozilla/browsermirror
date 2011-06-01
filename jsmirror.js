@@ -25,8 +25,11 @@ function Channel(server, channel, receiver) {
     transports: transports,
     port: server.port
   });
+  this.socket.on('connect', this.receiver.reconnect.bind(this.receiver));
+  this.socket.on('reconnect', this.receiver.reconnect.bind(this.receiver));
   this.socket.connect();
   this.channel = channel;
+  console.log('saying hello');
   this.send({subscribe: channel, hello: true});
   log(DEBUG, 'created socket', this.socket);
   var self = this;
@@ -265,6 +268,11 @@ Master.prototype.sendDoc = function (onsuccess) {
     this.send(data);
     this.lastSentMessage = cacheData;
   }
+};
+
+Master.prototype.reconnect = function () {
+  this.lastSentMessage = null;
+  this.lastSentDoc = null;
 };
 
 Master.prototype.processCommand = function (event) {
@@ -606,6 +614,10 @@ Mirror.prototype.processCommand = function (event) {
     log(INFO, 'Received screen:', event.screen);
     this.updateScreen(event.screen);
   }
+};
+
+Mirror.prototype.reconnect = function () {
+  this.send({hello: true});
 };
 
 Mirror.prototype.sendStatus = function () {
@@ -956,6 +968,7 @@ Panel.prototype.initPanel = function () {
   this.box.style.height = '10em';
   this.box.style.width = '7em';
   this.box.style.zIndex = '10001';
+  // Note: if you change anything here, be sure to change the example in homepage.html too
   this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000; color: #000">'
     + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
     + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
