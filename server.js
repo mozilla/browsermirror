@@ -28,9 +28,13 @@ var server = http.createServer(function(req, res){
     fs.readFile(__dirname + '/jsmirror.js', 'utf8', function (err, data) {
       fs.readFile(IO_BASE + '/support/socket.io-client/socket.io.js', 'utf8', function (err, data2) {
         res.writeHead(200, {'Content-Type': 'text/javascript'});
-        res.end(data + data2 + extra_js);
+        var header = "WEB_SOCKET_SWF_LOCATION = '" + SERVER_ADDRESS + "/WebSocketMainInsecure.swf';\n";
+        res.end(header + data + data2 + extra_js);
       });
     });
+  } else if (path == '/WebSocketMainInsecure.swf') {
+    sendPage(req, res, 'WebSocketMainInsecure.swf',
+             {'Content-Type': 'application/x-shockwave-flash', raw: true});
   }
 });
 
@@ -42,7 +46,8 @@ function sendPage(req, res, filename, vars) {
   vars._SERVER_ = SERVER_ADDRESS;
   vars._JSMIRROR_ = SERVER_ADDRESS + '/jsmirror.js';
   vars._SOCKET_IO_ = SERVER_ADDRESS + '/socket.io/socket.io.js';
-  vars._WEB_SOCKET_ = SERVER_ADDRESS + '/socket.io/lib/vendor/web-socket-js/WebSocketMain.swf';
+  //vars._WEB_SOCKET_ = SERVER_ADDRESS + '/socket.io/lib/vendor/web-socket-js/WebSocketMain.swf';
+  vars._WEB_SOCKET_ = SERVER_ADDRESS + '/WebSocketMainInsecure.swf';
   vars._TOKEN_ = generateToken();
   vars['Content-Type'] = vars['Content-Type'] || 'text/html';
   filename = __dirname + '/' + filename;
@@ -54,8 +59,10 @@ function sendPage(req, res, filename, vars) {
       return;
     }
     res.writeHead(200, {'Content-Type': vars['Content-Type']});
-    for (var i in vars) {
-      data = data.replace(i, vars[i]);
+    if (! vars.raw) {
+      for (var i in vars) {
+        data = data.replace(i, vars[i]);
+      }
     }
     res.end(data);
   });
