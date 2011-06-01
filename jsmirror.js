@@ -150,7 +150,7 @@ Base.prototype.temporaryHighlight = function (el, offsetTop, offsetLeft, mode) {
   setTimeout(canceller, TEMPORARY_HIGHLIGHT_DELAY);
   if (mode != 'redisplay') {
     var message = document.createElement('div');
-    message.innerHTML = '<a href="#" style="color: #009; text-decoration: underline">place noted</a>';
+    message.innerHTML = '<a href="#" style="color: #99f; text-decoration: underline">place noted</a>';
     var anchor = message.getElementsByTagName('a')[0];
     anchor.setAttribute('data-place', JSON.stringify({
       element: el.jsmirrorId,
@@ -969,30 +969,41 @@ Panel.prototype.initPanel = function () {
   this.box.style.width = '7em';
   this.box.style.zIndex = '10001';
   // Note: if you change anything here, be sure to change the example in homepage.html too
-  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000; color: #000">'
-    + '<span id="jsmirror-hide" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
-    + '<span id="jsmirror-highlight" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
-    + '<span id="jsmirror-view" style="position: relative; float: right; border: 2px inset #88f; cursor: pointer; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>'
+  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #444; border: 2px solid #999; color: #fff; padding: 3px; border-radius: 3px;">'
+    + '<div style="position: relative; float: right; display: inline">'
+    + '<span id="jsmirror-view" style="border: 1px outset #999; cursor: pointer; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>'
+    + '<span id="jsmirror-highlight" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
+    + '<span id="jsmirror-hide" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
+    + '</div>'
     + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #006;">share</a></div>' : '')
+    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
-    + '<input type="text" id="jsmirror-input" style="width: 100%">'
+    + '<input type="text" id="jsmirror-input" style="width: 100%; font-size: 10px; background-color: #999; color: #000; border: 1px solid #000;">'
     + '</div>';
   document.body.appendChild(this.box);
   var hideContainer = document.getElementById('jsmirror-container');
   var hideButton = document.getElementById('jsmirror-hide');
   hideButton.addEventListener('click', function () {
     var borderBox = self.box.getElementsByTagName('div')[0];
+    var buttonBox = borderBox.getElementsByTagName('div')[0];
     if (hideContainer.style.display) {
       hideContainer.style.display = "";
       hideButton.innerHTML = '&#215;';
       self.box.style.width = "7em";
-      borderBox.style.border = '2px solid #000';
+      borderBox.style.border = '2px solid #999';
+      borderBox.style.backgroundColor = '#444';
+      buttonBox.style.backgroundColor = 'transparent';
+      buttonBox.style.padding = '';
+      buttonBox.style.borderRadius = '';
     } else {
       hideContainer.style.display = "none";
       hideButton.innerHTML = '+';
       self.box.style.width = "";
       borderBox.style.border = '';
+      borderBox.style.backgroundColor = 'transparent';
+      buttonBox.style.backgroundColor = '#444';
+      buttonBox.style.padding = '3px';
+      buttonBox.style.borderRadius = '3px';
     }
   }, false);
   this.highlightButton = document.getElementById('jsmirror-highlight');
@@ -1070,15 +1081,15 @@ Panel.prototype.displayMessage = function (message, here) {
     div = document.createElement('div');
     div.style.margin = '0';
     div.style.padding = '2px';
-    div.style.borderBottom = '1px solid #aaa';
+    div.style.borderBottom = '1px solid #888';
     if (! here) {
-      div.style.backgroundColor = '#fff';
+      div.style.backgroundColor = '#666';
     }
     div.appendChild(document.createTextNode(message));
   } else {
     div = message;
     if (! here) {
-      div.style.backgroundColor = '#fff';
+      div.style.backgroundColor = '#666';
     }
   }
   this.chatDiv.appendChild(div);
