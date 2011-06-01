@@ -1,21 +1,38 @@
 <html>
  <head>
   <title>Browser Mirror</title>
+
+<style>
+body {
+  font-family: sans-serif;
+}
+div {
+  margin-bottom: 1em;
+}
+</style>
+
  </head>
  <body>
   <h1>Browser Mirror</h1>
 
-  <div>Browser Mirror is an exciting new way to collaborate on the web!
-  Blah blah blah.</div>
+  <div>Browser Mirror is a way of sharing your browser session with anyone
+    else.  You share your session and you'll get a link which you can give
+    to another person, and they'll see what you see, and can interact with
+    the page at the same time as you.</div>
 
-  <div>To use it drag this into your bookmarks, and use it to share the
-  page you are on.  (If you go to a new page you have to re-share it!)
+  <h2>How To Install It</h2>
+
+  <div>Browser Mirror is implemented as a <a
+    href="http://en.wikipedia.org/wiki/Bookmarklet">bookmarklet</a>.
+    To install it simply <b>click and drag</b> the link/button below
+    into your bookmark toolbar:</div>
+
+  <div style="margin: 1em">
+    <a style="padding: 0.3em; font-size: 120%; border: 2px outset #999; background-color: #ddd; border-radius: 5px; cursor: move;" href="javascript:(function () {window.runBookmarklet = {app: '_SERVER_', token: '_TOKEN_'};var n = 'jsmirror-script';var s = document.getElementById(n);if (s)  document.body.removeChild(s);s = document.createElement('script');s.src = '_JSMIRROR_';s.id = n;document.body.appendChild(s);})()">mirror</a>
   </div>
 
-  <h2><a href="javascript:(function () {window.WEB_SOCKET_SWF_LOCATION = '_WEB_SOCKET_';window.runBookmarklet = {app: '_SERVER_', token: '_TOKEN_'};var n = 'jsmirror-script';var s = document.getElementById(n);if (s)  document.body.removeChild(s);s = document.createElement('script');s.src = '_JSMIRROR_';s.id = n;document.body.appendChild(s);})()">jsmirror</a></h2>
   <!-- Source:
 (function () {
-window.WEB_SOCKET_SWF_LOCATION = '_WEB_SOCKET_';
 window.runBookmarklet = {app: '_SERVER_'};
 var n = 'jsmirror-script';
 var s = document.getElementById(n);
@@ -28,27 +45,157 @@ document.body.appendChild(s);
 })()
   -->
 
-  <h2>How it works</h2>
+  <div>Note: if you <em>click</em> the link you'll start sharing
+  <em>this</em> page.  Which an easy way to test this out, so long as
+  you don't get confused about what's happening.</div>
 
-  <div>Once you activate the bookmarklet your page will be sent to this server, and you will
-    see a box hovering on the right side of the page.  It has a link, "<u>share</u>", and
-    anyone who goes to that link will see your session and be able to interact with it in
-    a limited fashion.</div>
+  <h2>How To Use It</h2>
 
-  <div>Your sharing session will last as long as you have that page open -- if you reload
-    or go to another page it will stop (and anyone viewing the page will see it in its
-    last form).  If you start the bookmarklet on another page then it will again be shared
-    (at the same URL).  Note that you can only share one session.  </div>
+  <div>Once you have installed the bookmarklet, go to a page you want
+    to share.  It can be any page, something public on the web or
+    something protected by a login (e.g., your Facebook homepage).
+    Click on the "mirror" link and you'll start sharing that page.
+    You'll see a box like this open up on the top right side of the
+    page:
+    </div>
 
-  <div>Nothing about this is
-    secure, everything is plain text, any peer can hijack the session.  </div>
+  <div style="position: relative; float: right; padding-right: 0.5em;
+    height: 10em; width: 7em;">
+    <div style="font-family: sans-serif; font-size: 10px; background-color: #ddf; border: 2px solid #000; color: #000">
+      <span style="position: relative; float: right;
+        border: 2px inset #88f; cursor: pointer; width: 1em;
+        text-align: center">&#215;</span>
+      <span style="position: relative; float: right; border: 2px inset #88f;
+        cursor: pointer; width: 1em; text-align: center; color: #f00;
+        font-weight: bold;"
+        title="Press this button and click on the page to highlight a position on the page">&#10132;</span>
+      <span style="position: relative; float: right; border: 2px inset #88f;
+        cursor: pointer; width: 1em; text-align: center; color: #0f0;"
+        title="Turn this on to show where the remote user is scrolled to">&#8597;</span>
+      <div>
+       <div><a title="Give this link to a friend to let them view your session" href="#"
+         style="text-decoration: underline; color: #006;">share</a></div>
+        Chat:<div>
+          <div style="margin: 0; padding: 2px; border-bottom: 1px solid #aaa; background-color: #fff">A message from your friend</div>
+          <div style="margin: 0; padding: 2px; border-bottom: 1px solid #aaa;">Something you wrote</div>
+        </div>
+        <input type="text" style="width: 100%" />
+      </div>
+    </div>
+  </div>
+
+  <div>Give the <u style="color: #006">share</u> link to your friend.
+    When they open the page they'll see the same page as you, with a
+    similar box in the corner.  As you might expect, you can chat with
+    each other by typing into the little text box.  More than one
+    person can view the same session, though this is largely untested
+    and may result in surprising results. </div>
+
+  <div>Once you are both sharing a page you can also see some of what
+  you each are doing.  If you click on the
+
+    <span style="border: 2px inset #88f; background-color: #ddf;
+      cursor: pointer; width: 1em; text-align: center; color: #f00;
+      font-weight: bold;"
+      title="Press this button and click on the page to highlight a position on the page">&#10132;</span>
+
+    button you can then click anywhere in the page, and the location
+    will be noted for everyone (and you can re-display the location by
+    clicking on the link <u style="color: #006">position noted</u>
+    that is added to chat). </div>
+
+  <div>Because a page is potentially much bigger than the screen, you and
+    the person you are sharing with may not be looking at the same part
+    of the page.  To see where the other person is scrolled to click the
+    button
+
+        <span style="border: 2px inset #88f; background-color: #ddf;
+      cursor: pointer; width: 1em; text-align: center; color: #0f0;"
+      title="Turn this on to show where the remote user is scrolled to">&#8597;</span>.
+
+    When you click this you will be scrolled to the same position, and the
+    location of the other screen will noted with red bars on the left and
+    right of the page.  The bars will move as the other person scrolls, but
+    you will not scroll with them (it only jumps once when you first click
+    the button). </div>
+
+  <div>Expect more ways to collaborate as this tool is developed.
+  Ideas and feedback in this area is especially appreciated. </div>
+
+  <h2>Interacting on a page</h2>
+
+  <div>In addition to both people <em>seeing</em> the page, you can to
+    some degree both interact with a page.  (Though it should be noted
+    that this in particular is imperfect.) </div>
+
+  <div>Everything actually happens in the browser that started the
+  sharing, so if your friend does something that results in a message
+  that is transmitted to the first computer, may make changes in
+  response to what they did, and sends the results back to the friend.
+  This may result in noticeable delays. </div>
+
+  <div>If the remote person clicks on a link, for instance, the link
+    will be followed.  This may be particularly confusing, because you
+    must click on the <u style="color: #006">mirror</u> bookmarklet on
+    each new page!  You may also both work on forms, searches,
+    etc. </div>
+
+  <h2>The Technology</h2>
+
+  <div>The sharing is done at the <a
+  href="http://en.wikipedia.org/wiki/Document_Object_Model">DOM</a>
+  level.  This is in contrast to a tool like <a
+  href="http://en.wikipedia.org/wiki/Virtual_Network_Computing">VNC</a>
+  which shares pixels.  With Browser Mirror the DOM (HTML) is read and
+  sent across the wire, then re-rendered on the other side.
+  Javascript is <em>not</em> sent to the remote computer.  Also things
+  like images and videos are not sent, so while the page need not be
+  visible to the other computer (e.g., it requires a login) the images
+  and other resources must be public.  (Maybe we'll fix this
+  sometime?) </div>
+
+  <div>Because peer-to-peer communication is hard, we simply send all
+  data to a server which echos it to all the other computers (using <a
+  href="http://socket.io/">Socket.IO</a>).  The server does not
+  understand or look carefully at the messages, and were peer-to-peer
+  communication more feasible then it would be preferrable.  Besides,
+  most peer-to-peer systems have server fallback due to the difficulty
+  of establishing connections through firewalls and IP translation.
+  There is talk of a <a
+  href="http://www.whatwg.org/specs/web-apps/current-work/multipage/dnd.html#peer-to-peer-connections">PeerConnection</a>
+  browser API. </div>
+
+  <div>Note that this does not use a cooperative collaboration
+  technique, so it is unlike (for example) Etherpad or Google Docs
+  (which use <a
+  href="http://en.wikipedia.org/wiki/Operational_transformation">operational
+  transformation</a>).  These systems are responsive and handle
+  conflict well, but require considerably cooperation on the part of
+  peers.  Because the goal is to share any web page, we cannot expect
+  any cooperation on the part of web applications.  Also we cannot
+  change the DOM or otherwise effect changes from a remote computer,
+  as applications are not written with this in mind, and the state
+  would become hopelessly confused.  The one exception to this is form
+  fields, which are edited on the remote client and the resulting
+  edits are sent back instead of more primitive operations (like
+  clicks or key presses).  This is necessary in part because focus is
+  not shared between computers (since we allow both browsers to be
+  viewing different parts of the page), and in part because the
+  responsiveness would simply be too poor.  Forms <em>usually</em> are
+  allowed to operate fairly normally so this seems relatively
+  reliable. </div>
 
   <h2>The Code</h2>
 
-  <div>The code is hosted on <a href="https://github.com/ianb/browsermirror">github</a>.
-    There's no formal to-do list, but probably eventually it will be collected via
-    github issues.  Right now there are too many known issues to even think of them as
-    discrete "issues".</div>
+  <div>The code is hosted on <a
+    href="https://github.com/ianb/browsermirror">github</a>.  There's
+    no formal to-do list, but probably eventually it will be collected
+    via github issues.  Right now there are too many known issues to
+    even think of them as discrete "issues".</div>
+
+  <div>This is a <a href="https://mozillalabs.com/">Mozilla Labs</a>
+  experiment, started by <a href="mailto:ianb@mozilla.com">Ian
+  Bicking</a></div>
 
  </body>
 </html>
