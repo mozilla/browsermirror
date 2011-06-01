@@ -1360,6 +1360,7 @@ function expandRange(range) {
 }
 
 function showRange(range, elCallback) {
+  var inner;
   if (range.start == range.end && range.startText == 'inner' && range.endText == 'inner') {
     // A special case, when the range is entirely within one element
     var el = splitTextBetween(range.start, range.startOffset, range.endOffset);
@@ -1371,14 +1372,22 @@ function showRange(range, elCallback) {
   } else if (range.startText == 'after') {
     range.start = splitTextAfter(range.start.nextSibling, range.startOffset);
   } else if (range.startOffset) {
-    range.start = range.start.childNodes[range.startOffset];
+    inner = range.start.childNodes[range.startOffset];
+    // While the spec says these offsets specify children, they don't always, and sometimes
+    // the "container" is the element selected.
+    if (inner) {
+      range.start = inner;
+    }
   }
   if (range.endText == 'inner') {
     range.end = splitTextBefore(range.end.childNodes[0], range.endOffset);
   } else if (range.endText == 'after') {
     range.end = splitTextBefore(range.end.nextSibling, range.endOffset);
   } else if (range.endOffset) {
-    range.end = range.end.childNodes[range.endOffset];
+    inner = range.end.childNodes[range.endOffset];
+    if (inner) {
+      range.end = inner;
+    }
   }
   // Now we strictly need to go from the start element to the end element (inclusive!)
   var pos = range.start;
