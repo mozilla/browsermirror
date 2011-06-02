@@ -43,13 +43,28 @@ function Channel(server, channel, receiver) {
     self.receiver.message(msg);
   });
   this.shareUrl = server.url + '/view/' + channel;
+  this.chars = 0;
+  this.start = (new Date()).getTime();
 }
 
 Channel.prototype.send = function (message) {
+  /*var k = keys(message).join(',');
+  if (message.updates) {
+    var l = 0;
+    for (i in message.updates) l++;
+    k += '.len=' + l;
+    k += '.els=' + keys(message.updates);
+  }*/
   message.subscribe = this.channel;
   message = JSON.stringify(message);
-  log(INFO, 'sending message', message.substr(0, 70));
+  this.chars += message.length;
+  log(INFO, 'sending message', message.length);//, k);
   this.socket.send(message);
+};
+
+Channel.prototype.report = function () {
+  return parseInt(this.chars / 1024) + 'kb, '
+         + parseInt(this.chars / ((new Date()).getTime() - this.start)) + 'kb/s';
 };
 
 /************************************************************
@@ -214,7 +229,11 @@ Base.prototype.updateScreenArrow = function () {
       arrow = String.fromCharCode(8595);
     }
   }
-  document.getElementById('jsmirror-view').innerHTML = arrow;
+  var el = document.getElementById('jsmirror-view');
+  if (el.status !== arrow) {
+    el.status = arrow;
+    el.innerHTML = arrow;
+  }
 };
 
 /************************************************************
@@ -233,9 +252,9 @@ function Master(server, channel) {
   setInterval(this._boundSendDoc, 1000);
   setInterval(this.updateScreenArrow.bind(this), 1200);
   var listener = this.modifiedEvent.bind(this);
-  document.addEventListener('DOMSubtreeModified', listener, true);
-  //document.addEventListener('DOMNodeInserted', listener, true);
-  //document.addEventListener('DOMNodeRemoved', listener, true);
+  //document.addEventListener('DOMSubtreeModified', listener, true);
+  document.addEventListener('DOMNodeInserted', listener, true);
+  document.addEventListener('DOMNodeRemoved', listener, true);
   this.pendingChanges = [];
   this.pendingChangeTimer = null;
 }
@@ -243,39 +262,67 @@ function Master(server, channel) {
 Master.prototype = new Base();
 
 Master.prototype.modifiedEvent = function (event) {
+  //console.log('changed', event, event.target, event.target.jsmirrorId, event.type, event.target.nodeValue && event.target.nodeValue.substr(0, 70));
   var target = event.target;
+  if (this.skipElement(target)) {
+    return;
+  }
   while (! target.jsmirrorId) {
     target = target.parentNode;
+    if (this.skipElement(target)) {
+      return;
+    }
     if (! target) {
       log(WARN, 'Fell out of page looking for jsmirrorId', event.target, event.target.jsmirrorId);
       this.reconnect();
       return;
     }
   }
-  if (this.pendingChanges.indexOf(target.jsmirrorId) != -1) {
-    // We already have this change waiting
-    return;
-  }
-  this.pendingChanges.push(target.jsmirrorId);
-  var self = this;
+  this.pendingChanges.push(target);
   if (this.pendingChangeTimer === null) {
-    this.pendingChangeTimer = setTimeout(function () {
-      self.pendingChangeTimer = null;
-      var message = {};
-      for (var i=0; i<self.pendingChanges.length; i++) {
-        var id = self.pendingChanges[i];
-        var el = self.getElement(id);
-        if (! el) {
-          log(DEBUG, 'Element disappeared:', id);
-          continue;
-        }
-        message[id] = self.serializeElement(el);
-      }
-      self.pendingChanges = [];
-      self.send({updates: message});
-    }, 1000);
+    this.pendingChangeTimer = setTimeout(this.sendUpdates.bind(this), 1000);
   }
 };
+
+Master.prototype.sendUpdates = function () {
+  // We have an expansive set of updated elements, but we must trim it down to
+  // just a minimal set
+  this.pendingChangeTimer = null;
+  var toSend = trimToParents(this.pendingChanges);
+  var message = {};
+  for (var i=0; i<toSend.length; i++) {
+    var el = toSend[i];
+    message[el.jsmirrorId] = this.serializeElement(el);
+  }
+  this.pendingChanges = [];
+  this.send({updates: message});
+};
+
+function trimToParents(elements) {
+  /* Given a list of elements, return just those elements that are not contained
+     by other elements, and remove duplicates. */
+  var result = [];
+  for (var i=0; i<elements.length; i++) {
+    var el = elements[i];
+    if (result.indexOf(el) != -1) {
+      // Already in list
+      continue;
+    }
+    var parent = el.parentNode;
+    var skip = false;
+    while (parent) {
+      if (elements.indexOf(parent) != -1) {
+        skip = true;
+        break;
+      }
+      parent = parent.parentNode;
+    }
+    if (! skip) {
+      result.push(el);
+    }
+  }
+  return result;
+}
 
 Master.prototype.sendDoc = function (onsuccess) {
   /* Sends a complete copy of the current document to the server */
@@ -1355,7 +1402,8 @@ function parseUrl(url) {
 function makeId() {
   return 'el' + (arguments.callee.counter++);
 }
-makeId.counter=0;
+// This makes it more sortable:
+makeId.counter=1000;
 
 VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; WARN = ERROR = 50; CRITICAL = 60;
 LOG_LEVEL = DEBUG;
@@ -1628,4 +1676,12 @@ function splitTextBetween(el, start, end) {
   el.insertBefore(innerNode, endNode);
   el.insertBefore(startNode, innerNode);
   return innerNode;
+}
+
+function keys(obj) {
+  var result = [];
+  for (i in obj) {
+    result.push(i);
+  }
+  return result;
 }
