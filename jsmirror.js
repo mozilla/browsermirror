@@ -48,17 +48,17 @@ function Channel(server, channel, receiver) {
 }
 
 Channel.prototype.send = function (message) {
-  /*var k = keys(message).join(',');
+  var k = keys(message).join(',');
   if (message.updates) {
     var l = 0;
     for (i in message.updates) l++;
     k += '.len=' + l;
     k += '.els=' + keys(message.updates);
-  }*/
+  }
   message.subscribe = this.channel;
   message = JSON.stringify(message);
   this.chars += message.length;
-  log(INFO, 'sending message', message.length);//, k);
+  log(INFO, 'sending message', message.length, k);
   this.socket.send(message);
 };
 
@@ -249,12 +249,12 @@ function Master(server, channel) {
   this.lastSentDoc = null;
   this.panel = new Panel(this, true);
   this._boundSendDoc = this.sendDoc.bind(this);
-  setInterval(this._boundSendDoc, 1000);
+  setInterval(this._boundSendDoc, 5000);
   setInterval(this.updateScreenArrow.bind(this), 1200);
   var listener = this.modifiedEvent.bind(this);
   //document.addEventListener('DOMSubtreeModified', listener, true);
-  document.addEventListener('DOMNodeInserted', listener, true);
-  document.addEventListener('DOMNodeRemoved', listener, true);
+  //document.addEventListener('DOMNodeInserted', listener, true);
+  //document.addEventListener('DOMNodeRemoved', listener, true);
   this.pendingChanges = [];
   this.pendingChangeTimer = null;
 }
@@ -262,8 +262,14 @@ function Master(server, channel) {
 Master.prototype = new Base();
 
 Master.prototype.modifiedEvent = function (event) {
-  //console.log('changed', event, event.target, event.target.jsmirrorId, event.type, event.target.nodeValue && event.target.nodeValue.substr(0, 70));
+  console.log('changed', event.type, event.target, event.target.jsmirrorId, (event.target.nodeValue && event.target.nodeValue.substr(0, 70)) || event.target.innerHTML.substr(0, 70));
   var target = event.target;
+  if (this.skipElement(target)) {
+    return;
+  }
+  if (event.type != 'DOMSubtreeModified') {
+    target = target.parentNode;
+  }
   if (this.skipElement(target)) {
     return;
   }
@@ -333,8 +339,21 @@ Master.prototype.sendDoc = function (onsuccess) {
   if (! this.lastSentDoc) { //(! this.lastSentDoc) && cacheData != this.lastSentDoc) {
     data = {doc: docData};
     this.lastSentDoc = cacheData;
+    this.lastSentDocData = docData;
   } else {
     data = {};
+    var commands = [];
+    this.diffDocuments(this.lastSentDocData.head, document.head, commands);
+    this.diffDocuments(this.lastSentDocData.body, document.body, commands, false);
+    if (commands.length) {
+      console.log('Diffs:');
+      for (var i=0; i<commands.length; i++) {
+        console.log('...diff', diffRepr([commands[i]]));
+      }
+      data.diffs = commands;
+      this.lastSentDocData = docData;
+      this.lastSentDoc = cacheData;
+    }// else console.log('no diff');
   }
   var range = this.getRange();
   if (range) {
@@ -388,7 +407,7 @@ Master.prototype.processCommand = function (event) {
     }
   }
   if (event.screen) {
-    log(INFO, 'Received screen:', event.screen);
+    log(VERBOSE, 'Received screen:', event.screen);
     this.updateScreen(event.screen);
   }
   if (event.hello) {
@@ -546,9 +565,49 @@ Master.prototype.processChange = function (event) {
   }
 };
 
+// These elements can have e.g., clientWidth of 0 but still be relevant:
+Master.prototype.skipElementsOKEmpty = {
+  LINK: true,
+  STYLE: true,
+  HEAD: true,
+  META: true,
+  BODY: true,
+  APPLET: true,
+  BASE: true,
+  BASEFONT: true,
+  BDO: true,
+  BR: true,
+  OBJECT: true,
+  TD: true,
+  TR: true,
+  TH: true,
+  THEAD: true,
+  TITLE: true
+  // COL, COLGROUP?
+};
+
+// These elements are never sent:
+Master.prototype.skipElementsBadTags = {
+  SCRIPT: true,
+  NOSCRIPT: true
+};
+
 Master.prototype.skipElement = function (el) {
   /* true if this element should be skipped when sending to the mirror */
-  if (el.tagName == 'SCRIPT' || el.jsmirrorHide || el.id == 'webSocketContainer') {
+  var tag = el.tagName;
+  if (this.skipElementsBadTags[tag] || el.jsmirrorHide ||
+      el.id == 'webSocketContainer') {
+    return true;
+  }
+  // Skip elements that can't be seen, and have no children, and are
+  // "visible" elements (e.g., not STYLe)
+  // Note elements with children might have children with, e.g., absolute
+  // positioning -- so they might not make the parent have any width, but
+  // may still need to be displayed.
+  if (el.style && el.style.display == 'none'
+      || ((el.clientWidth === 0 || el.clientHeight === 0) &&
+          (! this.skipElementsOKEmpty[tag]) &&
+          (! el.childNodes.length))) {
     return true;
   }
   return false;
@@ -556,6 +615,7 @@ Master.prototype.skipElement = function (el) {
 
 Master.prototype.serializeDocument = function () {
   /* Serializes a complete document to JSON object */
+  // FIXME: should I clear this.elements here?
   var result = {
     href: location.href,
     htmlAttrs: this.serializeAttributes(document.childNodes[0]),
@@ -566,10 +626,12 @@ Master.prototype.serializeDocument = function () {
   return result;
 };
 
-Master.prototype.serializeElement = function (el) {
+Master.prototype.serializeElement = function (el, includeHTML) {
   /* Serializes a single element to a JSON object.
      The object looks like:
        [tagName, localId, {attrs}, [children...]]
+
+     If includeHTML is true then an additional innerHTML argument will be added
    */
   if (! el.jsmirrorId) {
     el.jsmirrorId = makeId();
@@ -579,35 +641,31 @@ Master.prototype.serializeElement = function (el) {
     return ['IMG', el.jsmirrorId, {src: el.toDataURL('image/png')}, []];
   }
   var attrs = this.serializeAttributes(el);
-  // FIXME: I don't understand this, but there's a div that is hidden on Facebook
-  // but isn't hidden at the top of the mirrored page
-  if (el.clientHeight === 0 && (! el.style.height) && (! el.style.display)) {
-    if (attrs.style) {
-      attrs.style += '; height: 0';
-    } else {
-      attrs.style = 'height: 0';
+  var children = this.normalChildren(el);
+  var length = children.length;
+  for (var i=0; i<length; i++) {
+    var child = children[i];
+    if (typeof child != 'string') {
+      children[i] = this.serializeElement(children[i]);
     }
   }
-  var childNodes = el.childNodes;
-  var nodesLength = childNodes.length;
-  var children = [];
-  for (var i=0; i<nodesLength; i++) {
-    var child = childNodes[i];
-    if (child.nodeType == document.CDATA_SECTION_NODE ||
-        child.nodeType == document.TEXT_NODE) {
-      children.push(child.nodeValue);
-    } else if (child.nodeType == document.COMMENT_NODE) {
-      children.push(['<!--COMMENT-->', {}, [child.textContent]]);
-    } else if (child.nodeType == document.ELEMENT_NODE) {
-      if (! this.skipElement(child)) {
-        children.push(this.serializeElement(child));
-      }
+  var result = [el.tagName, el.jsmirrorId, attrs, children];
+  if (includeHTML) {
+    result.push(el.innerHTML);
+  }
+  return result;
+};
+
+Master.prototype.filterInnerHTML = function (doc) {
+  var result = [doc[0], doc[1], doc[2], []];
+  for (var i=0; i<doc[3].length; i++) {
+    if (typeof doc[3][i] == 'string') {
+      result[3].push(doc[3][i]);
     } else {
-      // FIXME: what then?
-      log(DEBUG, 'not sure how to serialize this element', child);
+      result[3].push(this.filterInnerHTML(doc[3][i]));
     }
   }
-  return [el.tagName, el.jsmirrorId, attrs, children];
+  return result;
 };
 
 Master.prototype.serializeAttributes = function (el) {
@@ -630,6 +688,235 @@ Master.prototype.serializeAttributes = function (el) {
     attrs.value = el.value;
   }
   return attrs;
+};
+
+Master.prototype.diffDocuments = function (orig, current, commands, logit) {
+  var logitOrig = logit;
+  if (typeof logit == 'string') {
+    logit = current.id == logit;
+    if (logit) logitOrig = true;
+  }
+  if (logit === undefined) {
+    logit = current.tagName == 'BODY';
+  }
+  if (! current) {
+    throw 'Got bad current argument: '+current;
+  }
+  if (commands === undefined) {
+    commands = [];
+  }
+  if (! current.jsmirrorId) {
+    log(WARN, 'Got diffDocuments element without an id', current);
+    current.jsmirrorId = makeId();
+    this.elements[current.jsmirrorId] = current;
+  }
+  var origTagName = orig[0];
+  var origId = orig[1];
+  var origAttrs = orig[2];
+  var origChildren = orig[3];
+  var origInnerHTML = orig[4];
+  if (origTagName != current.tagName) {
+    // We can't do any diff if the tags don't match
+    if (logit) log(INFO, "Failing match because tags don't match", origTagname, current.tagName);
+    return null;
+  }
+  var curAttrs = this.serializeAttributes(current);
+  if (! this.compareObjectsUnsafe(origAttrs, curAttrs)) {
+    if (logit) log(INFO, 'change attrs', current);
+    commands.push(['attrs', current.jsmirrorId, this.serializeAttributes(current)]);
+  }
+  if (origId !== current.jsmirrorId) {
+    // This shouldn't happen really
+    log(WARN, "Tag ids don't match", origId, current.jsmirrorId, current);
+    return null;
+  }
+  if (origInnerHTML !== undefined && current.innerHTML === origInnerHTML) {
+    // Nothing here is changed
+    if (logit) log(INFO, 'innerHTML matches', current);
+    return commands;
+  }
+  var curChildren = this.normalChildren(current);
+  var curLength = curChildren.length;
+  var origLength = origChildren.length;
+  var origPos = 0;
+  var curPos = 0;
+  while (origPos < origLength && curPos < curLength) {
+    // If two equal strings, just walk forward
+    if (typeof origChildren[origPos] == 'string' &&
+        origChildren[origPos] == curChildren[curPos]) {
+      if (logit) log(INFO, 'Matching strings', origPos, curPos, origChildren[origPos]);
+      origPos++;
+      curPos++;
+      continue;
+    }
+    var nextPos = this.findNextMatch(origChildren, curChildren, origPos, curPos);
+    if (logit) log(INFO, 'Got next match', current, [origPos, curPos], nextPos, origChildren[origPos][0]);
+    if (nextPos === null) {
+      // No more matches, so we need to add everything up to the end
+      nextPos = [origLength, curLength];
+    }
+    var origNext = nextPos[0];
+    var curNext = nextPos[1];
+    if (origPos < origNext) {
+      // We have to delete some orig children
+      if (origPos+1 == origNext && typeof origChildren[origPos] == 'string') {
+        // Only a string has changed
+        if (logit) log(INFO, 'Delete preceding text', origPos);
+        if (origNext >= origLength) {
+          commands.push(['deletelasttext', current.parentNode.jsmirrorId]);
+        } else {
+          commands.push(['deletetext-', origChildren[origPos+1][1]]);
+        }
+      } else {
+        // Some elements have to be deleted
+        var startText = typeof origChildren[origPos] == 'string';
+        for (var i=origPos; i<origNext; i++) {
+          if (typeof origChildren[i] == 'string') {
+            continue;
+          }
+          var command = 'delete';
+          if (i == origPos+1 && startText) {
+            command += '-';
+          }
+          if (i+1 < origChildren && typeof origChildren[i+1] == 'string') {
+            command += '+';
+          }
+          if (logit) log(INFO, 'delete orig', command, origChildren[i][1]);
+          commands.push([command, origChildren[i][1]]);
+        }
+      }
+    }
+    if (curPos < curNext) {
+      // We have to insert some new children
+      var pushes = [];
+      for (var i=curPos; i<curNext; i++) {
+        if (typeof curChildren[i] == 'string') {
+          pushes.push(curChildren[i]);
+        } else {
+          if (! curChildren[i].jsmirrorId) {
+            curChildren[i].jsmirrorId = makeId();
+            this.elements[curChildren[i].jsmirrorId] = curChildren[i];
+          }
+          pushes.push(this.serializeElement(curChildren[i]));
+        }
+      }
+      if (logit) log(INFO, 'Do insertions', curChildren[curNext], pushes);
+      if (curChildren[curNext]) {
+        commands.push(['inserbefore', curChildren[curNext].jsmirrorId, pushes]);
+      } else {
+        commands.push(['appendto', current.parentNode.jsmirrorId, pushes]);
+      }
+    }
+    if (origChildren[origNext]) {
+      if (logit) log(INFO, 'Doing diff on subdocuments', origChildren[origNext][0], curChildren[curNext].tagName);
+      var origLen = commands.length;
+      if (logitOrig && typeof logitOrig == 'number') {
+        logitOrig--;
+      }
+      this.diffDocuments(origChildren[origNext], curChildren[curNext], commands, logitOrig);
+      if (logit && origLen != commands.length) {
+        log(INFO, 'Element had diff commands', (commands.length-origLen), curChildren[curNext]);
+      }
+    } else {
+      if (logit) log(INFO, 'Nothing left to compare');
+    }
+    curPos = curNext+1;
+    origPos = origNext+1;
+  }
+  return commands;
+};
+
+Master.prototype.findNextMatch = function (origChildren, curChildren, origStart, curStart) {
+  /* Return [origPos, curPos] or null if there's no match */
+  if (origStart >= origChildren.length || curStart >= curChildren.length) {
+    return null;
+  }
+  while (typeof curChildren[curStart] == 'string' || (! curChildren[curStart].jsmirrorId)) {
+    curStart++;
+    if (curStart >= curChildren.length) {
+      // There's nothing with an id
+      return null;
+    }
+  }
+  // First we see if we can find a match for curStart in origChildren
+  var check = origStart;
+  var checkId = curChildren[curStart].jsmirrorId;
+  if (! checkId)
+  while (check < origChildren.length) {
+    if (typeof origChildren[check] != 'string' && checkId == origChildren[check][1]) {
+      return [check, curStart];
+    }
+    check++;
+  }
+  // We didn't find a match, so we'll try to find a match for the origStart in curChildren
+  // This should never really go more than one loop
+  while (typeof origChildren[origStart] == 'string') {
+    origStart++;
+    if (origStart >= origChildren.length) {
+      // There's no more elements
+      return null;
+    }
+  }
+  checkId = origChildren[origStart][1];
+  check = curStart;
+  while (check < curChildren.length) {
+    if (typeof curChildren[check] != 'string' && checkId == curChildren[check].jsmirrorId) {
+      return [origStart, check];
+    }
+    check++;
+  }
+  // Fell out of the loop -- nothing matched, so we'll try later elements all around
+  return this.findNextMatch(origChildren, curChildren, origStart+1, curStart+1);
+};
+
+
+Master.prototype.normalChildren = function (el) {
+  // Returns a normalized representation of a set of children, as
+  // as a list of text and elements, with no two adjacent text elements
+  // and no empty text strings.  Ignorable elements are omitted.
+  var result = [];
+  var children = el.childNodes;
+  var length = children.length;
+  for (var i=0; i<length; i++) {
+    var child = children[i];
+    if (this.skipElement(child)) {
+      continue;
+    }
+    if (child.nodeType == document.TEXT_NODE) {
+      var value = child.nodeValue;
+      if (! value) {
+        continue;
+      }
+      if (i && typeof result[result.length-1] == 'string') {
+        // Append this text to the last
+        result[result.length-1] += value;
+      } else {
+        result.push(value);
+      }
+    } else if (child.nodeType == document.ELEMENT_NODE) {
+      result.push(child);
+    }
+  }
+  return result;
+};
+
+Master.prototype.compareObjectsUnsafe = function (orig, clobber) {
+  /* Compares the orig and clobber object, seeing that both objects have
+     the same attributes with the same values.  clobber will be modified
+     by the comparison. */
+  for (var i in orig) {
+    if (orig[i] !== clobber[i]) {
+      return false;
+    } else {
+      delete clobber[i];
+    }
+  }
+  for (i in clobber) {
+    if (orig[i] !== clobber[i]) {
+      return false;
+    }
+  }
+  return true;
 };
 
 
@@ -714,6 +1001,9 @@ Mirror.prototype.processCommand = function (event) {
   if (event.screen) {
     log(INFO, 'Received screen:', event.screen);
     this.updateScreen(event.screen);
+  }
+  if (event.diffs) {
+    this.applyDiff(event.diffs);
   }
 };
 
@@ -901,12 +1191,19 @@ Mirror.prototype.deserializeElement = function (data) {
     return el;
   }
   el = document.createElement(tagName);
+  try {
   for (var i in attrs) {
     if (attrs.hasOwnProperty(i)) {
       el.setAttribute(i, attrs[i]);
     }
+  } } catch (e) {
+    log(WARN, 'bad attrs', attrs, JSON.stringify(attrs));
   }
-  for (i=0; i<children.length; i++) {
+  if (children === undefined) {
+    log(WARN, 'Bad children', data);
+    throw 'Bad children list';
+  }
+  for (var i=0; i<children.length; i++) {
     var o = children[i];
     if (typeof o == "string") {
       el.appendChild(document.createTextNode(o));
@@ -920,6 +1217,64 @@ Mirror.prototype.deserializeElement = function (data) {
     el.addEventListener('change', this._boundChangeEvent, false);
   }
   return el;
+};
+
+Mirror.prototype.applyDiff = function (commands) {
+  for (var i=0; i<commands.length; i++) {
+    var command = commands[i];
+    var name = command[0];
+    var el = this.getElement(command[1]);
+    if (! el) {
+      log(WARN, 'Got diff command for element that does not exist', command);
+      return;
+    }
+    if (name === 'attrs') {
+      this.setAttributes(el, command[2]);
+    }
+    if (name === 'deletetext-' || name === 'delete-' || name == 'delete-+') {
+      while (el.previousSibling && el.previousSibling.nodeType == document.TEXT_NODE) {
+        el.parentNode.removeChild(el.previousSibling);
+      }
+    }
+    if (name === 'delete+') {
+      while (el.nextSibling && el.nextSibling.nodeType == document.TEXT_NODE) {
+        el.parentNode.removeChild(el.nextSibling);
+      }
+    }
+    if (name === 'delete' || name === 'delete-' || name === 'delete+' || name === 'delete-+') {
+      el.parentNode.removeChild(el);
+    }
+    if (name === 'deletelasttext') {
+      var lastEl = el.childNodes[el.childNodes.length-1];
+      if (lastEl.nodeType != document.TEXT_NODE) {
+        log(WARN, "Got command that deletes something that isn't text", command, lastEl);
+      } else {
+        el.removeChild(lastEl);
+      }
+    }
+    if (name === 'insertbefore') {
+      var pushes = command[2];
+      for (var j=pushes.length-1; j>=0; j--) {
+        if (typeof pushes[j] == 'string') {
+          var child = document.createTextNode(pushes[j]);
+        } else {
+          var child = this.deserializeElement(pushes[j]);
+        }
+        el.parentNode.insertBefore(child, el);
+      }
+    }
+    if (name === 'appendto') {
+      var pushes = command[2];
+      for (var j=0; j<pushes.length; j++) {
+        if (typeof pushes[j] == 'string') {
+          var child = document.createTextNode(pushes[j]);
+        } else {
+          var child = this.deserializeElement(pushes[j]);
+        }
+      }
+      el.appendChild(child);
+    }
+  }
 };
 
 Mirror.prototype.serializeEvent = function (event) {
@@ -1678,10 +2033,60 @@ function splitTextBetween(el, start, end) {
   return innerNode;
 }
 
-function keys(obj) {
+function keys(obj, sort) {
   var result = [];
   for (i in obj) {
     result.push(i);
   }
+  if (sort) {
+    result.sort();
+  }
   return result;
 }
+
+function diffRepr(data, single) {
+  /* Gives a string representation of a diff */
+  var result = '';
+  for (var i=0; i<data.length; i++) {
+    if (result) {
+      result += '\n';
+    }
+    var name = data[i][0];
+    var elId = data[i][1];
+    if (master || mirror) {
+      var el = (master || mirror).getElement(elId);
+      if (el) {
+        elId = el.tagName+':'+elId;
+      }
+    }
+    if (name === 'attrs') {
+      result += 'attrs('+elId+')='+keys(data[i][2], true).join(',');
+    } else if (name.substr(0, 6) == 'delete') {
+      result += name + '(' + elId + ')';
+    } else {
+      result += name + '(' + elId + ')=' + data[i][2].length + '/' + parseInt(JSON.stringify(data[i][2]).length/1000) + 'kb';
+    }
+  }
+  return result;
+}
+
+function TrafficTracker(checkTime) {
+  if (this === window) {
+    throw 'You forgot new';
+  }
+  this.total = 0;
+  this.started = (new Date()).getTime();
+  this.marks = [];
+  this.lastTime = 0;
+  this.checkTime = checkTime || 5000;
+}
+
+TrafficTracker.prototype.track = function (chars, reason) {
+  var now = (new Date()).getTime();
+  if (reason || now - this.lastTime > this.checkTime) {
+    this.lastTime = now;
+    this.marks.push([0, now, reason]);
+  }
+  this.marks[this.marks.length-1][0] += chars;
+};
+
