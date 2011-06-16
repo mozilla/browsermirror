@@ -436,6 +436,7 @@ Master.prototype.processCommand = function (event) {
     this.lastSentMessage = null;
     this.lastRange = null;
     this.lastScreen = null;
+    this.sendDoc();
   }
 };
 
