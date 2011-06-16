@@ -352,9 +352,9 @@ Master.prototype.sendDoc = function (onsuccess) {
     this.diffDocuments(this.lastSentDocData.head, document.head, commands);
     this.diffDocuments(this.lastSentDocData.body, document.body, commands, false);
     if (commands.length) {
-      console.log('Diffs:');
+      log(DEBUG, 'Diffs:');
       for (var i=0; i<commands.length; i++) {
-        console.log('...diff', diffRepr([commands[i]]));
+        log(DEBUG, '...diff', diffRepr([commands[i]]));
       }
       data.diffs = commands;
       this.lastSentDocData = docData;
@@ -370,9 +370,15 @@ Master.prototype.sendDoc = function (onsuccess) {
     range.end = range.end.jsmirrorId;
     data.range = range;
   }
-  data.screen = getScreenRange();
-  data.screen.start = data.screen.start.jsmirrorId;
-  data.screen.end = data.screen.end.jsmirrorId;
+  // FIXME: should probably shortcut case where the pixel position of the screen
+  // hasn't changed (rather than find element anchors each time)
+  var screen = getScreenRange();
+  screen.start = screen.start.jsmirrorId;
+  screen.end = screen.end.jsmirrorId;
+  if ((! this.lastScreen) || (this.lastScreen !== JSON.stringify(screen))) {
+    data.screen = screen;
+    this.lastScreen = JSON.stringify(screen);
+  }
   cacheData = JSON.stringify(data);
   if (cacheData != this.lastSentMessage) {
     // There are cases when other changes need to be fixed up by resending
@@ -484,15 +490,30 @@ Master.prototype.dispatchEvent = function (event, target) {
     var doDefault = target.dispatchEvent(event);
     log(DEBUG, 'should do default', doDefault, event.type, target.tagName, target.href);
     if (doDefault && target['on'+event.type]) {
+      // FIXME: how do you cancel this?
       target['on'+event.type](event);
     }
-    if (doDefault && event.type == 'click' && target.tagName == 'A' && target.href) {
-      // Dispatching a click event never actually follows the link itself
-      location.href = target.href;
+    if (doDefault) {
+      if (event.type == 'click') {
+        this.doDefaultAction(event, target);
+      }
     }
   } else {
     // FIXME: do other default actions
     document.dispatchEvent(event);
+  }
+};
+
+Master.prototype.doDefaultAction = function (event, target) {
+  if (target.tagName === 'A') {
+    if (target.href) {
+      location.href = target.href;
+    }
+    return;
+  }
+  target = target.parentNode;
+  if (target) {
+    this.doDefaultAction(event, target);
   }
 };
 
@@ -764,6 +785,14 @@ Master.prototype.diffDocuments = function (orig, current, commands, logit) {
   var curChildren = this.normalChildren(current);
   var curLength = curChildren.length;
   var origLength = origChildren.length;
+  if (curLength === 1 && origLength === 1
+      && typeof curChildren[0] === 'string' && typeof origChildren[0] === 'string') {
+    // A special case of an element that only has a single string child
+    if (origChildren[0] !== curChildren[0]) {
+      commands.push(['replace_text', current.jsmirrorId, curChildren[0]]);
+    }
+    return commands;
+  }
   var origPos = 0;
   var curPos = 0;
   while (origPos < origLength && curPos < curLength) {
@@ -789,7 +818,7 @@ Master.prototype.diffDocuments = function (orig, current, commands, logit) {
         // Only a string has changed
         if (logit) log(INFO, 'Delete preceding text', origPos);
         if (origNext >= origLength) {
-          commands.push(['deletelasttext', current.parentNode.jsmirrorId]);
+          commands.push(['delete_last_text', current.jsmirrorId]);
         } else {
           commands.push(['deletetext-', origChildren[origPos+1][1]]);
         }
@@ -828,9 +857,9 @@ Master.prototype.diffDocuments = function (orig, current, commands, logit) {
       }
       if (logit) log(INFO, 'Do insertions', curChildren[curNext], pushes);
       if (curChildren[curNext]) {
-        commands.push(['inserbefore', curChildren[curNext].jsmirrorId, pushes]);
+        commands.push(['insert_before', curChildren[curNext].jsmirrorId, pushes]);
       } else {
-        commands.push(['appendto', current.parentNode.jsmirrorId, pushes]);
+        commands.push(['append_to', current.parentNode.jsmirrorId, pushes]);
       }
     }
     if (origChildren[origNext]) {
@@ -1309,15 +1338,30 @@ Mirror.prototype.applyDiff = function (commands) {
     if (name === 'delete' || name === 'delete-' || name === 'delete+' || name === 'delete-+') {
       el.parentNode.removeChild(el);
     }
-    if (name === 'deletelasttext') {
-      var lastEl = el.childNodes[el.childNodes.length-1];
-      if (lastEl.nodeType != document.TEXT_NODE) {
-        log(WARN, "Got command that deletes something that isn't text", command, lastEl);
+    if (name === 'delete_last_text') {
+      if (el.childNodes.length) {
+        var lastEl = el.childNodes[el.childNodes.length-1];
+        if (lastEl.nodeType != document.TEXT_NODE) {
+          log(WARN, "Got command that deletes something that isn't text", command, lastEl);
+        } else {
+          el.removeChild(lastEl);
+        }
       } else {
-        el.removeChild(lastEl);
+        log(WARN, "Tried to delete_last_text of element with no children", command, lastEl);
       }
     }
-    if (name === 'insertbefore') {
+    if (name === 'replace_text') {
+      if (el.childNodes.length !== 1 || el.childNodes[0].nodeType !== document.TEXT_NODE) {
+        while (el.childNodes) {
+          el.removeChild(el.childNodes[0]);
+        }
+        el.appendChild(document.createTextNode(command[2]));
+      } else {
+        console.log('updating element', el.jsmirrorId, el.childNodes[0].nodeValue, command[2]);
+        el.childNodes[0].nodeValue = command[2];
+      }
+    }
+    if (name === 'insert_before') {
       var pushes = command[2];
       for (var j=pushes.length-1; j>=0; j--) {
         if (typeof pushes[j] == 'string') {
@@ -1328,7 +1372,7 @@ Mirror.prototype.applyDiff = function (commands) {
         el.parentNode.insertBefore(child, el);
       }
     }
-    if (name === 'appendto') {
+    if (name === 'append_to') {
       var pushes = command[2];
       for (var j=0; j<pushes.length; j++) {
         if (typeof pushes[j] == 'string') {
@@ -2155,7 +2199,7 @@ function markup(name) {
   var ob = window.mirror || window.master;
   var el = ob.getElement(name);
   if (! el) {
-    console.log('No element', name);
+    log(WARN, 'No element', name);
   } else {
     el.style.border = '2px dotted #f00';
   }
