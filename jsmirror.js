@@ -2175,7 +2175,9 @@ function TrafficTracker(checkTime) {
 
 TrafficTracker.prototype.track = function (chars, reason) {
   var now = (new Date()).getTime();
-  if (reason || (now - this.lastTime > this.checkTime && this.marks[this.marks.length-1][0])) {
+  if (reason ||
+      (now - this.lastTime > this.checkTime &&
+       (! this.marks.length || this.marks[this.marks.length-1][0]))) {
     this.lastTime = now;
     this.marks.push([0, now, reason]);
     this.updateDisplay();
