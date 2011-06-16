@@ -368,7 +368,10 @@ Master.prototype.sendDoc = function (onsuccess) {
     range = expandRange(range);
     range.start = range.start.jsmirrorId;
     range.end = range.end.jsmirrorId;
+  }
+  if ((! this.lastRange) || (this.lastRange !== JSON.stringify(range))) {
     data.range = range;
+    this.lastRange = range;
   }
   // FIXME: should probably shortcut case where the pixel position of the screen
   // hasn't changed (rather than find element anchors each time)
@@ -431,6 +434,8 @@ Master.prototype.processCommand = function (event) {
     // Make sure to send the doc again:
     this.lastSentDoc = null;
     this.lastSentMessage = null;
+    this.lastRange = null;
+    this.lastScreen = null;
   }
 };
 
@@ -1054,6 +1059,9 @@ Mirror.prototype.processCommand = function (event) {
       this.showRange(event.range);
       this.lastRange = event.range;
     }
+  } else if (event.range === null) {
+    this.removeRange();
+    this.lastRange = null;
   }
   if (event.screen) {
     log(INFO, 'Received screen:', event.screen);
