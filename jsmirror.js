@@ -1544,9 +1544,9 @@ Panel.prototype.initPanel = function () {
   // Note: if you change anything here, be sure to change the example in homepage.html too
   this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #444; border: 2px solid #999; color: #fff; padding: 3px; border-radius: 3px;">'
     + '<div style="position: relative; float: right; display: inline">'
-    + '<span id="jsmirror-view" style="border: 1px outset #999; cursor: pointer; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>'
-    + '<span id="jsmirror-highlight" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
-    + '<span id="jsmirror-hide" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; width: 1em; text-align: center">&#215;</span>'
+    + '<span id="jsmirror-view" style="border: 1px outset #999; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>'
+    + '<span id="jsmirror-highlight" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
+    + '<span id="jsmirror-hide" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center">&#215;</span>'
     + '</div>'
     + '<div id="jsmirror-container">'
     + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '')
