@@ -14,6 +14,7 @@ function Channel(server, channel, receiver) {
     // This does not seem to work cross-domain:
     transports.splice(transports.indexOf('flashsocket'), 1);
   }
+  // FIXME: can't get any other transport working (reliably) cross-domain
   transports = ['xhr-polling'];
   if (transports.indexOf('flashsocket') != -1) {
     WebSocket.__initialize();
@@ -72,10 +73,14 @@ Channel.prototype.report = function () {
  */
 
 function Base () {
+  this.traffic = new TrafficTracker();
 };
 
 Base.prototype.send = function (msg) {
   /* Sends a message to the server */
+  if (this.traffic) {
+    this.traffic.track(JSON.stringify(msg).length);
+  }
   this.channel.send(msg);
 };
 
@@ -251,6 +256,7 @@ function Master(server, channel) {
   this._boundSendDoc = this.sendDoc.bind(this);
   setInterval(this._boundSendDoc, 5000);
   setInterval(this.updateScreenArrow.bind(this), 1200);
+  setInterval(this.refreshElements.bind(this), 10000);
   var listener = this.modifiedEvent.bind(this);
   //document.addEventListener('DOMSubtreeModified', listener, true);
   //document.addEventListener('DOMNodeInserted', listener, true);
@@ -372,6 +378,11 @@ Master.prototype.sendDoc = function (onsuccess) {
     // There are cases when other changes need to be fixed up by resending
     // the entire document; kind of a shot-gun fix for these:
     //data.doc = docData;
+    if (data.doc && this.traffic) {
+      this.traffic.track(0, 'send doc');
+    } else if (data.diffs && this.traffic) {
+      this.traffic.track(0, 'send diff');
+    }
     this.send(data);
     this.lastSentMessage = cacheData;
   }
@@ -446,6 +457,21 @@ Master.prototype.deserializeEvent = function (event) {
 
 Master.prototype.getElement = function (id) {
   return this.elements[id];
+};
+
+Master.prototype.refreshElements = function () {
+  this.elements = {};
+  function recur(elements, el) {
+    elements[el.jsmirrorId] = el;
+    for (var i=0; i<el.childNodes.length; i++) {
+      var child = el.childNodes[i];
+      if (child.nodeType === document.ELEMENT_NODE) {
+        recur(elements, child);
+      }
+    }
+  }
+  recur(this.elements, document.head);
+  recur(this.elements, document.body);
 };
 
 Master.prototype.dispatchEvent = function (event, target) {
@@ -935,6 +961,7 @@ function Mirror(server, channel) {
   this.panel = new Panel(this, false);
   this.lastHref = null;
   this._boundSendStatus = this.sendStatus.bind(this);
+  this.rangeElements = [];
   setInterval(this._boundSendStatus, 1000);
   setInterval(this.updateScreenArrow.bind(this), 1200);
 }
@@ -967,6 +994,13 @@ Mirror.prototype.processCommand = function (event) {
       this.setElement(replaceEl, event.updates[id]);
     }
   }
+  if (event.diffs) {
+    this.removeRange();
+    this.applyDiff(event.diffs);
+    if (this.lastRange && (! event.range)) {
+      this.showRange(this.lastRange);
+    }
+  }
   if (event.chatMessages) {
     log(INFO, 'Received chat message:', event.chatMessages);
     for (var j=0; j<event.chatMessages.length; j++) {
@@ -984,26 +1018,17 @@ Mirror.prototype.processCommand = function (event) {
     log(INFO, 'Received range:', event.range);
     event.range.start = this.getElement(event.range.start);
     event.range.end = this.getElement(event.range.end);
+    this.removeRange();
     if ((! event.range.start) || (! event.range.end)) {
       log(WARN, 'Bad range');
     } else {
-      showRange(event.range, function (el) {
-        if (el.nodeType == document.ELEMENT_NODE && (! el.jsmirrorHide)) {
-          el.style.backgroundColor = '#ff9';
-          //el.style.borderLeft = '1px solid #f00';
-          //el.style.borderRight = '1px solid #0f0';
-          //el.style.borderTop = '1px solid #00f';
-          //el.style.borderBottom = '1px solid #f0f';
-        }
-      });
+      this.showRange(event.range);
+      this.lastRange = event.range;
     }
   }
   if (event.screen) {
     log(INFO, 'Received screen:', event.screen);
     this.updateScreen(event.screen);
-  }
-  if (event.diffs) {
-    this.applyDiff(event.diffs);
   }
 };
 
@@ -1030,6 +1055,46 @@ Mirror.prototype.sendStatus = function () {
     this.send(data);
     this.lastSentMessage = cacheData;
   }
+};
+
+Mirror.prototype.removeRange = function () {
+  var els = this.rangeElements;
+  if (! els || (! els.length)) {
+    return;
+  }
+  var flatten = [];
+  for (var i=0; i<els.length; i++) {
+    var el = els[i];
+    if (el.artificialRangeElement) {
+      flatten.push(el);
+      continue;
+    }
+    if (el.oldBackgroundColor) {
+      el.style.backgroundColor = el.oldBackgroundColor;
+    } else {
+      el.style.backgroundColor = null;
+    }
+  }
+  for (var i=0; i<flatten.length; i++) {
+    var el = flatten[i];
+    while (el.childNodes.length) {
+      el.parentNode.insertBefore(el.childNodes[0], el);
+    }
+    el.parentNode.removeChild(el);
+  }
+  this.rangeElements = [];
+};
+
+Mirror.prototype.showRange = function (range) {
+  var self = this;
+  showRange(range, function (el) {
+    if (el.nodeType == document.ELEMENT_NODE && (! el.jsmirrorHide)) {
+      el.oldBackgroundColor = el.style.backgroundColor;
+      // FIXME: not always a good default highlight:
+      el.style.backgroundColor = '#ff9';
+      self.rangeElements.push(el);
+    }
+  });
 };
 
 Mirror.prototype.setDoc = function (doc) {
@@ -1271,8 +1336,8 @@ Mirror.prototype.applyDiff = function (commands) {
         } else {
           var child = this.deserializeElement(pushes[j]);
         }
+        el.appendChild(child);
       }
-      el.appendChild(child);
     }
   }
 };
@@ -1422,7 +1487,7 @@ Panel.prototype.initPanel = function () {
   this.box.style.top = '0.5em';
   this.box.style.right = '0.5em';
   this.box.style.height = '10em';
-  this.box.style.width = '7em';
+  this.box.style.width = this.width;
   this.box.style.zIndex = '10001';
   // Note: if you change anything here, be sure to change the example in homepage.html too
   this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #444; border: 2px solid #999; color: #fff; padding: 3px; border-radius: 3px;">'
@@ -1445,7 +1510,7 @@ Panel.prototype.initPanel = function () {
     if (hideContainer.style.display) {
       hideContainer.style.display = "";
       hideButton.innerHTML = '&#215;';
-      self.box.style.width = "7em";
+      self.box.style.width = this.width;
       borderBox.style.border = '2px solid #999';
       borderBox.style.backgroundColor = '#444';
       buttonBox.style.backgroundColor = 'transparent';
@@ -1487,12 +1552,19 @@ Panel.prototype.initPanel = function () {
   var chatInput = document.getElementById('jsmirror-input');
   chatInput.addEventListener('keypress', function (event) {
     if (event.keyCode == 13) { // Enter
-      self.addChatMessage(chatInput.value);
+      var message = chatInput.value;
+      if (message == '/traffic') {
+        self.controller.traffic.show(self);
+      } else {
+        self.addChatMessage(message);
+      }
       chatInput.value = '';
       return false;
     }
   }, false);
 };
+
+Panel.prototype.width = '20em';
 
 // Flag that we are currently highlighting something
 var inHighlighting = false;
@@ -1917,6 +1989,7 @@ function splitTextBefore(el, offset) {
   /* Creates a node that emcompasses all the text starting at el
      and going offset characters */
   var span = document.createElement('span');
+  span.artificialRangeElement = true;
   var text = '';
   if (el.nodeType != document.TEXT_NODE) {
     throw 'Unexpected node: ' + el;
@@ -1944,11 +2017,17 @@ function splitTextAfter(el, offset) {
   while (el.nodeValue.length < offset) {
     text += el.nodeValue;
     offset -= el.nodeValue.length;
-    el = el.nextSibling;
+    if (el.nextSibling) {
+      el = el.nextSibling;
+    } else {
+      log(WARN, 'Could not get ' + offset + 'chars from element', el);
+      break;
+    }
   }
   var rest = el.nodeValue.substr(offset, el.nodeValue.length-offset);
   el.nodeValue = el.nodeValue.substr(0, offset);
   var last = document.createElement('span');
+  last.artificialRangeElement = true;
   var span = last;
   last.appendChild(document.createTextNode(rest));
   el.parentNode.insertBefore(last, el.nextSibling);
@@ -1961,6 +2040,7 @@ function splitTextAfter(el, offset) {
         last.appendChild(here);
       } else {
         last = document.createElement('span');
+        last.artificialRangeElement = true;
         var here = pos;
         pos = pos.nextSibling;
         here.parentNode.insertBefore(last, here);
@@ -2023,6 +2103,7 @@ function splitTextBetween(el, start, end) {
   var startNode = document.createTextNode(startText);
   var endNode = document.createTextNode(endText);
   var innerNode = document.createElement('span');
+  innerNode.artificialRangeElement = true;
   innerNode.appendChild(document.createTextNode(innerText));
   for (i=0; i<textNodes.length; i++) {
     el.removeChild(textNodes[i]);
@@ -2044,7 +2125,7 @@ function keys(obj, sort) {
   return result;
 }
 
-function diffRepr(data, single) {
+function diffRepr(data) {
   /* Gives a string representation of a diff */
   var result = '';
   for (var i=0; i<data.length; i++) {
@@ -2053,8 +2134,8 @@ function diffRepr(data, single) {
     }
     var name = data[i][0];
     var elId = data[i][1];
-    if (master || mirror) {
-      var el = (master || mirror).getElement(elId);
+    if (window.master || window.mirror) {
+      var el = (window.master || window.mirror).getElement(elId);
       if (el) {
         elId = el.tagName+':'+elId;
       }
@@ -2064,10 +2145,20 @@ function diffRepr(data, single) {
     } else if (name.substr(0, 6) == 'delete') {
       result += name + '(' + elId + ')';
     } else {
-      result += name + '(' + elId + ')=' + data[i][2].length + '/' + parseInt(JSON.stringify(data[i][2]).length/1000) + 'kb';
+      result += name + '(' + elId + ')=' + data[i][2].length + '/' + parseInt(JSON.stringify(data[i][2]).length);
     }
   }
   return result;
+}
+
+function markup(name) {
+  var ob = window.mirror || window.master;
+  var el = ob.getElement(name);
+  if (! el) {
+    console.log('No element', name);
+  } else {
+    el.style.border = '2px dotted #f00';
+  }
 }
 
 function TrafficTracker(checkTime) {
@@ -2079,14 +2170,59 @@ function TrafficTracker(checkTime) {
   this.marks = [];
   this.lastTime = 0;
   this.checkTime = checkTime || 5000;
+  this.div = null;
 }
 
 TrafficTracker.prototype.track = function (chars, reason) {
   var now = (new Date()).getTime();
-  if (reason || now - this.lastTime > this.checkTime) {
+  if (reason || (now - this.lastTime > this.checkTime && this.marks[this.marks.length-1][0])) {
     this.lastTime = now;
     this.marks.push([0, now, reason]);
+    this.updateDisplay();
   }
   this.marks[this.marks.length-1][0] += chars;
+  this.total += chars;
 };
 
+TrafficTracker.prototype.show = function (panel) {
+  var box = panel.box;
+  this.div = document.createElement('div');
+  this.div.innerHTML = 'Traffic:<br><div id="jsmirror-traffic-tracking"></div>';
+  box.appendChild(this.div);
+  this.updateDisplay();
+};
+
+TrafficTracker.prototype.updateDisplay = function () {
+  if (! this.div) {
+    return;
+  }
+  var container = document.getElementById('jsmirror-traffic-tracking');
+  var totalTime = (new Date()).getTime() - this.started;
+  var rest = '';
+  for (var i=0; i<this.marks.length; i++) {
+    var nextTime = this.marks[i+1] ? this.marks[i+1][1] : (new Date()).getTime();
+    var time = nextTime - this.marks[i][1];
+    var chars = this.marks[i][0];
+    var reason = this.marks[i][2] || '@' + parseInt(((new Date()).getTime() - this.started) / 1000);
+    rest += reason + '<br>\n';
+    rest += '&nbsp;Data: ' + this.size(chars) + '<br>\n';
+    var secs = time / 1000;
+    rest += '&nbsp;Rate: ' + this.size(chars / secs) + '/s <br>\n';
+  }
+  var secs = totalTime / 1000;
+  container.innerHTML = (
+    '&nbsp;Data: ' + this.size(this.total) + '<br>\n' +
+    '&nbsp;Time: ' + parseInt(totalTime/1000) + 'secs <br>\n' +
+    '&nbsp;Rate: ' + this.size(this.total / secs) + '/s <br>\n' +
+    rest);
+};
+
+TrafficTracker.prototype.size = function (s) {
+  if (! s) {
+    return '0';
+  }
+  if (s < 2000) {
+    return parseInt(s) + 'b';
+  }
+  return parseInt(s/1000) + 'kb';
+};
