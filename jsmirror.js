@@ -1506,6 +1506,7 @@ Mirror.prototype.IGNORE_KEYPRESSES = [
   {ctrlKey: true, charCode: 116}, // Ctrl+T
   {ctrlKey: true, charCode: 114}, // Ctrl+R
   {ctrlKey: true, charCode: 119}, // Ctrl+W
+  {ctrlKey: true, charCode: 110}, // Ctrl+N
   {ctrlKey: true, keyCode: 9}, // Ctrl+Tab
   {ctrlKey: true, keyCode: 33}, // Ctrl+PgUp
   {ctrlKey: true, keyCode: 34}, // Ctrl+PgDown
