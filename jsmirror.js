@@ -349,8 +349,17 @@ Master.prototype.sendDoc = function (onsuccess) {
   } else {
     data = {};
     var commands = [];
-    this.diffDocuments(this.lastSentDocData.head, document.head, commands);
-    this.diffDocuments(this.lastSentDocData.body, document.body, commands, false);
+    var result = this.diffDocuments(this.lastSentDocData.head, document.head, commands);
+    if (result === null) {
+      data.doc = docData;
+      commands = [];
+    } else {
+      result = this.diffDocuments(this.lastSentDocData.body, document.body, commands, false);
+      if (result === null) {
+        data.doc = docData;
+        commands = [];
+      }
+    }
     if (commands.length) {
       log(DEBUG, 'Diffs:');
       for (var i=0; i<commands.length; i++) {
@@ -652,13 +661,13 @@ Master.prototype.skipElement = function (el) {
       el.id == 'webSocketContainer') {
     return true;
   }
-  // Skip elements that can't be seen, and have no children, and are
-  // "visible" elements (e.g., not STYLe)
+  // Skip elements that can't be seen, and have no children, and are potentially
+  // "visible" elements (e.g., not STYLE)
   // Note elements with children might have children with, e.g., absolute
   // positioning -- so they might not make the parent have any width, but
   // may still need to be displayed.
-  if (el.style && el.style.display == 'none'
-      || ((el.clientWidth === 0 || el.clientHeight === 0) &&
+  if ((el.style && el.style.display == 'none')
+      || ((el.clientWidth === 0 && el.clientHeight === 0) &&
           (! this.skipElementsOKEmpty[tag]) &&
           (! el.childNodes.length))) {
     return true;
@@ -801,7 +810,7 @@ Master.prototype.diffDocuments = function (orig, current, commands, logit) {
   }
   var origPos = 0;
   var curPos = 0;
-  while (origPos < origLength && curPos < curLength) {
+  while (origPos < origLength || curPos < curLength) {
     // If two equal strings, just walk forward
     if (typeof origChildren[origPos] == 'string' &&
         origChildren[origPos] == curChildren[curPos]) {
@@ -811,11 +820,11 @@ Master.prototype.diffDocuments = function (orig, current, commands, logit) {
       continue;
     }
     var nextPos = this.findNextMatch(origChildren, curChildren, origPos, curPos);
-    if (logit) log(INFO, 'Got next match', current, [origPos, curPos], nextPos, origChildren[origPos][0]);
     if (nextPos === null) {
       // No more matches, so we need to add everything up to the end
       nextPos = [origLength, curLength];
     }
+    if (logit) log(INFO, 'Got next match', current, [origPos, curPos], nextPos, origChildren[origPos] && origChildren[origPos][0]);
     var origNext = nextPos[0];
     var curNext = nextPos[1];
     if (origPos < origNext) {
@@ -865,7 +874,7 @@ Master.prototype.diffDocuments = function (orig, current, commands, logit) {
       if (curChildren[curNext]) {
         commands.push(['insert_before', curChildren[curNext].jsmirrorId, pushes]);
       } else {
-        commands.push(['append_to', current.parentNode.jsmirrorId, pushes]);
+        commands.push(['append_to', current.jsmirrorId, pushes]);
       }
     }
     if (origChildren[origNext]) {
@@ -1329,7 +1338,7 @@ Mirror.prototype.applyDiff = function (commands) {
     var el = this.getElement(command[1]);
     if (! el) {
       log(WARN, 'Got diff command for element that does not exist', command);
-      return;
+      continue;
     }
     if (name === 'attrs') {
       this.setAttributes(el, command[2]);
@@ -1352,11 +1361,13 @@ Mirror.prototype.applyDiff = function (commands) {
         var lastEl = el.childNodes[el.childNodes.length-1];
         if (lastEl.nodeType != document.TEXT_NODE) {
           log(WARN, "Got command that deletes something that isn't text", command, lastEl);
+          continue;
         } else {
           el.removeChild(lastEl);
         }
       } else {
         log(WARN, "Tried to delete_last_text of element with no children", command, lastEl);
+        continue;
       }
     }
     if (name === 'replace_text') {
@@ -1366,7 +1377,6 @@ Mirror.prototype.applyDiff = function (commands) {
         }
         el.appendChild(document.createTextNode(command[2]));
       } else {
-        console.log('updating element', el.jsmirrorId, el.childNodes[0].nodeValue, command[2]);
         el.childNodes[0].nodeValue = command[2];
       }
     }
