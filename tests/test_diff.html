@@ -1,0 +1,67 @@
+<html>
+<head>
+<title>diffDocuments Test</title>
+<script src="../../doctestjs/doctest.js"></script>
+<script src="../jsmirror.js"></script>
+<link rel="stylesheet" type="text/css" href="../../doctestjs/doctest.css" />
+<style type="text/css">
+body {
+  font-family: sans-serif;
+}
+</style>
+</head>
+
+<body class="autodoctest">
+
+<h1>diffDocuments Text</h1>
+
+<div>
+This is the scratch area:
+
+  <div id="scratch" style="border 2px solid #000">
+  </div>
+</div>
+
+<div class="test">
+
+<pre class="doctest">
+$ function MockMaster() {
+>   this.elements = {};
+> }
+$ MockMaster.prototype = Master.prototype;
+$ master = new MockMaster();
+$ scratch = document.getElementById('scratch');
+$ var lastDoc = master.serializeElement(scratch);
+$ function diff() {
+>   var commands = [];
+>   var result = master.diffDocuments(lastDoc, scratch, commands, true);
+>   if (result === null) {
+>     writeln('diff failed');
+>   } else if (! commands.length) {
+>     writeln('no diff');
+>   } else {
+>     for (var i=0; i&lt;commands.length; i++) {
+>       var command = commands[i];
+>       writeln.apply(window, command);
+>     }
+>   }
+>   lastDoc = master.serializeElement(scratch);
+> }
+$ scratch.appendChild(el=document.createElement('div'));
+$ el.className = 'foo bar';
+$ el.innerHTML = 'foo';
+$ diff();
+append_to el1000 [["DIV", "el1001", {class: "foo bar"}, ["foo"]]]
+$ el.setAttribute('foo', 'bar');
+$ diff();
+attrs el1001 {class: "foo bar", foo: "bar"}
+$ scratch.appendChild(document.createTextNode('testy'));
+$ diff();
+append_to el1000 ["testy"]
+$ scratch.removeChild(scratch.childNodes[scratch.childNodes.length-1]);
+$ diff();
+delete_last_text el1000
+</pre>
+</div>
+
+</body> </html>
