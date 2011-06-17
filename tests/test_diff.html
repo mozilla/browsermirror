@@ -61,6 +61,24 @@ append_to el1000 ["testy"]
 $ scratch.removeChild(scratch.childNodes[scratch.childNodes.length-1]);
 $ diff();
 delete_last_text el1000
+$ scratch.removeChild(scratch.childNodes[0]);
+$ diff();
+deletetext- el1001
+$ scratch.appendChild(document.createTextNode('foo'));
+$ scratch.appendChild(el2=document.createElement('span'));
+$ el2.innerHTML = 'spaninner';
+$ diff();
+append_to el1000 ["foo", ["SPAN", "el1002", {}, ["spaninner"]]]
+$ // Remove the foo text
+> scratch.removeChild(scratch.childNodes[scratch.childNodes.length-2]);
+$ diff();
+deletetext- el1002
+$ scratch.removeChild(el2);
+$ scratch.appendChild(el2=document.createElement('span'));
+$ el2.innerHTML = 'spaninner';
+$ diff();
+delete el1002
+append_to el1000 [["SPAN", "el1003", {}, ["spaninner"]]]
 </pre>
 </div>
 
