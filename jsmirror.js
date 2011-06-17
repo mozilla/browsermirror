@@ -1628,7 +1628,7 @@ Panel.prototype.initPanel = function () {
   }, false);
 };
 
-Panel.prototype.width = '20em';
+Panel.prototype.width = '16em';
 
 // Flag that we are currently highlighting something
 var inHighlighting = false;
