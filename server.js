@@ -18,7 +18,7 @@ var io = require(IO_BASE);
 var SERVER_ADDRESS = null;
 
 var server = http.createServer(function(req, res){
-  var path = url.parse(req.url).pathname;
+  var path = url.parse(req.url).pathname || '/';
   if (path == '/') {
     sendPage(req, res, 'homepage.html');
   } else if (path.search(/^\/view\//) != -1) {
