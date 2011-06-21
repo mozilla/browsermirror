@@ -1424,6 +1424,8 @@ Mirror.prototype.serializeEvent = function (event) {
         var jsmirrorId = value.jsmirrorId;
         if (jsmirrorId) {
           value = {jsmirrorId: value.jsmirrorId};
+        } else {
+          continue;
         }
       } catch (e) {
         log(WARN, 'could not get jsmirrorId', value, i, e);
@@ -1484,9 +1486,6 @@ Mirror.prototype.catchEvent = function (event) {
       }
     }
   }
-  //if (event.type == 'keypress') {
-  //  log(INFO, 'keypress', event.charCode, event.keyCode, event.target);
-  //}
   var serialized = this.serializeEvent(event);
   this.sendEvent(serialized);
   // Maybe should check event.cancelable -- stopPropagation doesn't mean anything if
