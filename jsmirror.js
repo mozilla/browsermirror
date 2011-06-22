@@ -583,7 +583,8 @@ Master.prototype.initEvent = function (event, data, module) {
       data.canBubble || true,
       data.cancelable || true);
   } else if (module == 'KeyboardEvent') {
-    event.initKeyEvent(
+    var method = event.initKeyboardEvent ? 'initKeyboardEvent' : 'initKeyEvent';
+    event[method](
       data.type,
       data.canBubble || true,
       data.cancelable || true,
@@ -621,9 +622,34 @@ Master.prototype.processChange = function (event) {
     window, // view
     {} // detail
   );
-  target.dispatchEvent(realEvent);
-  if (target.onchange) {
+  var doDefault = target.dispatchEvent(realEvent);
+  if (doDefault && target.onchange) {
     target.onchange(realEvent);
+  }
+  // FIXME: if not doDefault, should I set the target.value?
+  // FIXME: and should I set value after or before firing events?
+  // A normal change event will also fire lots of keydown and keyup events
+  // which sometimes are caught instead of a change event.  We'll trigger
+  // a keyup event just to make sure...
+  realEvent = document.createEvent('KeyboardEvent');
+  // FIXME: is it okay to leave both keyCode and charCode as 0?
+  // FIXME: probably should only fire on text fields
+  var method = realEvent.initKeyboardEvent ? 'initKeyboardEvent' : 'initKeyEvent';
+  realEvent[method](
+    'keyup',
+    true, // canBubble
+    true, // cancelable
+    window, // view
+    false, // ctrlKey
+    false, // altKey
+    false, // shiftKey
+    false, // metaKey
+    0, // keyCode
+    0 // charCode
+    );
+  doDefault = target.dispatchEvent(realEvent);
+  if (doDefault && target.onkeyup) {
+    target.onkeyup(realEvent);
   }
 };
 
@@ -1326,7 +1352,12 @@ Mirror.prototype.deserializeElement = function (data) {
   el.jsmirrorId = jsmirrorId;
   if ((tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT' || tagName == 'OPTION')
       && el.id != 'jsmirror-input') {
-    el.addEventListener('change', this._boundChangeEvent, false);
+    if (tagName == 'TEXTAREA' || (tagName == 'INPUT' && tagName.type.toLowerCase() == 'text')) {
+      var eventType = 'keyup';
+    } else {
+      var eventType = 'change';
+    }
+    el.addEventListener(eventType, this._boundChangeEvent, false);
   }
   return el;
 };
