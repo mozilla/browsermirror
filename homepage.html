@@ -39,7 +39,7 @@ div {
   </object>
   </div>
 
-  <h2>How To Install It</h2>
+  <h2>To Install:</h2>
 
   <div>Browser Mirror is implemented as a bookmarklet.
     To install it simply <b>click and drag</b> the link/button below
@@ -202,9 +202,30 @@ document.body.appendChild(s);
     via github issues.  Right now there are too many known issues to
     even think of them as discrete "issues".</div>
 
+  <h2>How The Web Can Help</h2>
+
+  <div>As the web gets fancier, this gets harder.  Or it gets easier?</div>
+
+  <div>One thing that would be great for this project is <a
+  href="http://www.whatwg.org/specs/web-apps/current-work/multipage/dnd.html#peer-to-peer-connections">PeerConnection</a>.
+  This is a proposal for an API to allow one browser to communicate
+  directly with another.  Right now communication goes through a
+  server, but the server just echoes the messages to other
+  browsers.</div>
+
+  <div>The <code>&lt;video&gt;</code> tag is going to be helpful, as I
+  believe it will offer a general way to look at the state of a video.
+  This tool more-or-less sends and recreates the DOM (i.e., elements),
+  but it can't look into a Flash element to see or send the state.
+  Actual video sharing will really just be both people viewing the
+  video at the same time -- it wouldn't be sent from one browser to
+  the other.  But with the video tag we should be able to start and
+  pause play, and change time position
+
   <div>This is a <a href="https://mozillalabs.com/">Mozilla Labs</a>
   experiment, started by <a href="mailto:ianb@mozilla.com">Ian
-  Bicking</a></div>
+  Bicking</a> (also you can find Ian on irc.mozilla.org as ianbicking
+  in <code>#labs</code>)</div>
 
  </body>
 
