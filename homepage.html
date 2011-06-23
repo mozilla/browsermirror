@@ -1,6 +1,10 @@
 <html>
  <head>
   <title>Browser Mirror</title>
+<script src="http://mirror.ianbicking.org:8000/swfobject.js"></script>
+<script>
+  swfobject.registerObject("csSWF", "9.0.115", "expressInstall.swf");
+</script>
 
 <style>
 body {
@@ -19,6 +23,21 @@ div {
     else.  You share your session and you'll get a link which you can give
     to another person, and they'll see what you see, and can interact with
     the page at the same time as you.</div>
+
+  <h2><a href="#" onclick="document.getElementById('video').style.display=''">View the intro video</a></h2>
+
+  <div style="display: none" id="video">
+   <object id="csSWF" classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" width="1011" height="650" codebase="http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=9,0,115,0">
+    <param name="src" value="http://mirror.ianbicking.org:8000/mirror-1_controller.swf"/>
+    <param name="bgcolor" value="#1a1a1a"/>
+    <param name="quality" value="best"/>
+    <param name="allowScriptAccess" value="always"/>
+    <param name="allowFullScreen" value="true"/>
+    <param name="scale" value="showall"/>
+    <param name="flashVars" value="autostart=false#&thumb=http://mirror.ianbicking.org:8000/FirstFrame.png&thumbscale=45&color=0x000000,0x000000"/>
+    <embed name="csSWF" src="http://mirror.ianbicking.org:8000/mirror-1_controller.swf" width="1011" height="650" bgcolor="#1a1a1a" quality="best" allowScriptAccess="always" allowFullScreen="true" scale="showall" flashVars="autostart=false&thumb=http://mirror.ianbicking.org:8000/FirstFrame.png&thumbscale=45&color=0x000000,0x000000" pluginspage="http://www.macromedia.com/shockwave/download/index.cgi?P1_Prod_Version=ShockwaveFlash"></embed>
+  </object>
+  </div>
 
   <h2>How To Install It</h2>
 
