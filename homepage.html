@@ -24,7 +24,7 @@ div {
     to another person, and they'll see what you see, and can interact with
     the page at the same time as you.</div>
 
-  <h2><a href="#" onclick="document.getElementById('video').style.display=''">View the intro video</a></h2>
+  <h2><a href="#" onclick="document.getElementById('video').style.display=''; return false">View the intro video</a></h2>
 
   <div style="display: none" id="video">
    <object id="csSWF" classid="clsid:d27cdb6e-ae6d-11cf-96b8-444553540000" width="1011" height="650" codebase="http://download.macromedia.com/pub/shockwave/cabs/flash/swflash.cab#version=9,0,115,0">
@@ -208,4 +208,10 @@ document.body.appendChild(s);
   Bicking</a></div>
 
  </body>
+
+  <script>
+  if (location.hash && location.hash.indexOf('video') != -1) {
+    document.getElementById('video').style.display = '';
+  }
+  </script>
 </html>
