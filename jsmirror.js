@@ -1584,14 +1584,14 @@ Panel.prototype.initPanel = function () {
   this.box.style.width = this.width;
   this.box.style.zIndex = '10001';
   // Note: if you change anything here, be sure to change the example in homepage.html too
-  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #444; border: 2px solid #999; color: #fff; padding: 3px; border-radius: 3px;">'
+  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #444; border: 2px solid #999; color: #fff; padding: 3px; border-radius: 3px; text-align: left">'
     + '<div style="position: relative; float: right; display: inline">'
     + '<span id="jsmirror-view" style="border: 1px outset #999; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>'
     + '<span id="jsmirror-highlight" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
     + '<span id="jsmirror-hide" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center">&#215;</span>'
     + '</div>'
     + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><a title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '')
+    + (this.isMaster ? '<div><span id="jsmirror-share-text" style="display: none"><label for="jsmirror-share-field">copy this link:</label></span><input type="text" id="jsmirror-share-field" value="' + this.controller.channel.shareUrl + '" style="padding: 0; margin: 0; border: 1px solid #000; width: 8em; display: none"><a id="jsmirror-share-url" title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
     + '<input type="text" id="jsmirror-input" style="width: 100%; font-size: 10px; background-color: #999; color: #000; border: 1px solid #000;">'
     + '</div>';
@@ -1656,6 +1656,34 @@ Panel.prototype.initPanel = function () {
       return false;
     }
   }, false);
+  var shareUrl = document.getElementById('jsmirror-share-url');
+  var shareField = document.getElementById('jsmirror-share-field');
+  var shareText = document.getElementById('jsmirror-share-text');
+  shareUrl.addEventListener('click', function (event) {
+    shareUrl.style.display = 'none';
+    shareField.style.display = '';
+    shareText.style.display = '';
+    shareField.focus();
+    shareField.select();
+    if (window.clipboardData) {
+      window.clipboardData.setData('text', shareField.value);
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  });
+  shareField.addEventListener('blur', function () {
+    shareField.style.display = 'none';
+    shareText.style.display = 'none';
+    shareUrl.style.display = '';
+  });
+  shareText.addEventListener('click', function (event) {
+    // We don't want clicking the label to cause a blur
+    // FIXME: doesn't work, I guess the blur happens first
+    shareField.focus();
+    shareField.select();
+    event.preventDefault();
+    event.stopPropagation();
+  });
 };
 
 Panel.prototype.width = '16em';
