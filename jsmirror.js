@@ -1352,7 +1352,7 @@ Mirror.prototype.deserializeElement = function (data) {
   el.jsmirrorId = jsmirrorId;
   if ((tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT' || tagName == 'OPTION')
       && el.id != 'jsmirror-input') {
-    if (tagName == 'TEXTAREA' || (tagName == 'INPUT' && tagName.type.toLowerCase() == 'text')) {
+    if (tagName == 'TEXTAREA' || (tagName == 'INPUT' && tagName.type && tagName.type.toLowerCase() == 'text')) {
       var eventType = 'keyup';
     } else {
       var eventType = 'change';
@@ -1656,34 +1656,36 @@ Panel.prototype.initPanel = function () {
       return false;
     }
   }, false);
-  var shareUrl = document.getElementById('jsmirror-share-url');
-  var shareField = document.getElementById('jsmirror-share-field');
-  var shareText = document.getElementById('jsmirror-share-text');
-  shareUrl.addEventListener('click', function (event) {
-    shareUrl.style.display = 'none';
-    shareField.style.display = '';
-    shareText.style.display = '';
-    shareField.focus();
-    shareField.select();
-    if (window.clipboardData) {
-      window.clipboardData.setData('text', shareField.value);
-    }
-    event.preventDefault();
-    event.stopPropagation();
-  });
-  shareField.addEventListener('blur', function () {
-    shareField.style.display = 'none';
-    shareText.style.display = 'none';
-    shareUrl.style.display = '';
-  });
-  shareText.addEventListener('click', function (event) {
-    // We don't want clicking the label to cause a blur
-    // FIXME: doesn't work, I guess the blur happens first
-    shareField.focus();
-    shareField.select();
-    event.preventDefault();
-    event.stopPropagation();
-  });
+  if (this.isMaster) {
+    var shareUrl = document.getElementById('jsmirror-share-url');
+    var shareField = document.getElementById('jsmirror-share-field');
+    var shareText = document.getElementById('jsmirror-share-text');
+    shareUrl.addEventListener('click', function (event) {
+      shareUrl.style.display = 'none';
+      shareField.style.display = '';
+      shareText.style.display = '';
+      shareField.focus();
+      shareField.select();
+      if (window.clipboardData) {
+        window.clipboardData.setData('text', shareField.value);
+      }
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    shareField.addEventListener('blur', function () {
+      shareField.style.display = 'none';
+      shareText.style.display = 'none';
+      shareUrl.style.display = '';
+    });
+    shareText.addEventListener('click', function (event) {
+      // We don't want clicking the label to cause a blur
+      // FIXME: doesn't work, I guess the blur happens first
+      shareField.focus();
+      shareField.select();
+      event.preventDefault();
+      event.stopPropagation();
+    });
+  }
 };
 
 Panel.prototype.width = '16em';
