@@ -31,7 +31,12 @@ function Channel(server, channel, receiver) {
   this.socket.on('reconnect', this.receiver.reconnect.bind(this.receiver));
   this.socket.connect();
   this.channel = channel;
-  this.send({subscribe: channel, hello: true});
+  var message = {subscribe: channel, hello: true, isMaster: this.receiver.isMaster}  ;
+  // FIXME: this is kind of a break in the abstraction:
+  if (this.receiver.isMaster) {
+    message.href = location.href;
+  }
+  this.send(message);
   log(DEBUG, 'created socket', this.socket);
   var self = this;
   // FIXME: some sort of queue?
@@ -272,9 +277,12 @@ function Master(server, channel) {
   //document.addEventListener('DOMNodeRemoved', listener, true);
   this.pendingChanges = [];
   this.pendingChangeTimer = null;
+  this.send({href: location.href});
 }
 
 Master.prototype = new Base();
+
+Master.prototype.isMaster = true;
 
 Master.prototype.modifiedEvent = function (event) {
   console.log('changed', event.type, event.target, event.target.jsmirrorId, (event.target.nodeValue && event.target.nodeValue.substr(0, 70)) || event.target.innerHTML.substr(0, 70));
@@ -1047,6 +1055,8 @@ function Mirror(server, channel) {
 
 Mirror.prototype = new Base();
 
+Mirror.prototype.isMaster = false;
+
 Mirror.prototype.sendEvent = function (event) {
   this.send({event: event});
 };
@@ -1057,6 +1067,11 @@ Mirror.prototype.sendChange = function (change) {
 
 Mirror.prototype.processCommand = function (event) {
   log(DEBUG, 'got message', JSON.stringify(event).substr(0, 70));
+  var href = event.href || (event.doc ? event.doc.href : null);
+  if (href && this.lastHref !== null && href != this.lastHref) {
+    location.reload();
+    return;
+  }
   if (event.doc) {
     this.setDoc(event.doc);
   }
@@ -1180,24 +1195,20 @@ Mirror.prototype.showRange = function (range) {
 };
 
 Mirror.prototype.setDoc = function (doc) {
-  if (doc.href && this.lastHref !== null && doc.href != this.lastHref) {
-    location.reload();
-    return;
-  }
   if (doc.href) {
     this.lastHref = doc.href;
-  }
-  if (doc.head) {
-    this.setElement(document.head, doc.head);
-  }
-  if (doc.body) {
-    this.setElement(document.body, doc.body);
   }
   if (doc.htmlAttrs) {
     this.setAttributes(document.childNodes[0], doc.htmlAttrs);
   }
+  if (doc.head) {
+    this.setElement(document.head, doc.head);
+  }
   if (doc.href) {
     this.setBase(doc.href);
+  }
+  if (doc.body) {
+    this.setElement(document.body, doc.body);
   }
   if (doc.hash || doc.hash === "") {
     location.hash = doc.hash;
