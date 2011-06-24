@@ -1840,7 +1840,7 @@ Panel.prototype.highlightListener = function (event) {
   this.controller.sendHighlight(this.highlightedElement.jsmirrorId, offsetTop, offsetLeft);
   this.highlightButton.style.backgroundColor = '';
   this.highlightButton.style.color = '#f00';
-  document.removeEventListener('click', self._boundHighlightListener);
+  document.removeEventListener('click', self._boundHighlightListener, true);
   event.preventDefault();
   event.stopPropagation();
   return true;
