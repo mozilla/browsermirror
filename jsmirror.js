@@ -285,7 +285,6 @@ Master.prototype = new Base();
 Master.prototype.isMaster = true;
 
 Master.prototype.modifiedEvent = function (event) {
-  console.log('changed', event.type, event.target, event.target.jsmirrorId, (event.target.nodeValue && event.target.nodeValue.substr(0, 70)) || event.target.innerHTML.substr(0, 70));
   var target = event.target;
   if (this.skipElement(target)) {
     return;
@@ -458,6 +457,10 @@ Master.prototype.processCommand = function (event) {
   }
   if (event.hello) {
     // Make sure to send the doc again:
+    if (event.isMaster) {
+      alert('Two computers are sending updates, everything will break!\n'
+            + 'The other computer is at: ' + event.href);
+    }
     this.lastSentDoc = null;
     this.lastSentMessage = null;
     this.lastRange = null;
@@ -478,7 +481,11 @@ Master.prototype.deserializeEvent = function (event) {
     }
     value = event[i];
     if (value && typeof value == 'object' && value.jsmirrorId) {
-      value = this.getElement(value.jsmirrorId) || null;
+      var el = this.getElement(value.jsmirrorId) || null;
+      if (! el) {
+        log(WARN, 'Could not find element', value.jsmirrorId);
+      }
+      value = el;
     }
     event[i] = value;
   }
@@ -539,7 +546,23 @@ Master.prototype.dispatchEvent = function (event, target) {
 Master.prototype.doDefaultAction = function (event, target) {
   if (target.tagName === 'A') {
     if (target.href) {
-      location.href = target.href;
+      var base = target.href;
+      var hash = '';
+      if (base.indexOf('#') != -1) {
+        hash = base.substr(base.indexOf('#'), base.length);
+        base = base.substr(0, base.indexOf('#'));
+      }
+      var hereBase = location.href;
+      if (hereBase.indexOf('#') != -1) {
+        hereBase = hereBase.substr(0, hereBase.indexOf('#'));
+      }
+      if (base === hereBase) {
+        // Not a remote link, so it's okay
+        location.hash = hash;
+        this.send({doc: {hash: hash}});
+        return;
+      }
+      this.queryHref(target.href);
     }
     return;
   }
@@ -1032,6 +1055,69 @@ Master.prototype.compareObjectsUnsafe = function (orig, clobber) {
   return true;
 };
 
+Master.prototype.queryHref = function (href) {
+  /* Called when the mirror clicks a link that will go to a new page.
+     This asks the user if they want to follow the link, and warns them
+     about reactivating the bookmarklet. */
+  if (this.queryHrefCancel) {
+    this.queryHrefCancel();
+  }
+  var div = document.createElement('div');
+  div.style.position = 'fixed';
+  div.style.zIndex = '10002';
+  div.style.top = parseInt((window.innerHeight - 50)/2) + 'px';
+  div.style.height = '100px';
+  div.style.left = '50px';
+  div.style.width = (window.innerWidth - 200) + 'px';
+  div.style.backgroundColor = '#444';
+  div.style.color = '#fff';
+  div.style.padding = '1em';
+  div.style.borderRadius = '3px';
+  div.style.border = '2px solid #999';
+  div.jsmirrorHide = true;
+  // FIXME: quote href
+  div.innerHTML = 'The other person has clicked on a link.  That link will take you to:<br>'
+    + '<a style="margin-left: 1em; color: #99f; text-decoration: underline" href="' + href + '" target="_blank">' + href + '</a><br>'
+    + 'Do you want to go? <button id="jsmirror-yes">Go!</button>  <button id="jsmirror-no">Cancel</button><br>'
+    + 'Note: you must re-activate the bookmarklet once you get to the new page!';
+  document.body.appendChild(div);
+  var yes = document.getElementById('jsmirror-yes');
+  var no = document.getElementById('jsmirror-no');
+  var self = this;
+  function cancel() {
+    document.body.removeChild(div);
+    document.removeEventListener('click', maybeCancel, true);
+    self.sendChat(["The other person cancelled your attempt to visit " + href]);
+    self.queryHrefCancel = null;
+  };
+  function maybeCancel(event) {
+    if (event.target == yes) {
+      location.href = href;
+    }
+    if (event.target != no) {
+      // See if they clicked somewhere on the dialog
+      var el = event.target;
+      while (el) {
+        if (el == div) {
+          return;
+        }
+        el = el.parentNode;
+      }
+    }
+    // Otherwise cancel
+    event.preventDefault();
+    event.stopPropagation();
+    cancel();
+  }
+  document.addEventListener('click', maybeCancel, true);
+  this.queryHrefCancel = cancel;
+  // FIXME: not sure these will ever happen given maybeCancel:
+  yes.addEventListener('click', function () {
+    location.href = href;
+  });
+  no.addEventListener('click', cancel);
+};
+
 
 /*************************************************************
  The mirror/client
@@ -1071,6 +1157,11 @@ Mirror.prototype.processCommand = function (event) {
   if (href && this.lastHref !== null && href != this.lastHref) {
     location.reload();
     return;
+  }
+  if (event.hello && event.isMaster && href == this.lastHref) {
+    // A revisit of the same page on the other side.  We should immediately
+    // trigger a sendDoc on the other side to get back in sync
+    this.send({hello: true});
   }
   if (event.doc) {
     this.setDoc(event.doc);
