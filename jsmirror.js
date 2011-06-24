@@ -1158,9 +1158,13 @@ Mirror.prototype.processCommand = function (event) {
     location.reload();
     return;
   }
-  if (event.hello && event.isMaster && href == this.lastHref) {
-    // A revisit of the same page on the other side.  We should immediately
-    // trigger a sendDoc on the other side to get back in sync
+  if (event.hello && event.isMaster) {
+    var waitingEl = document.getElementById('jsmirror-waiting');
+    console.log('hellod', waitingEl, href, event.isMaster);
+    if (waitingEl) {
+      waitingEl.innerHTML = 'Connected, receiving document...';
+    }
+    // Since we need the page right away, we'll ask for it:
     this.send({hello: true});
   }
   if (event.doc) {
