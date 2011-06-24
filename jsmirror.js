@@ -432,7 +432,18 @@ Master.prototype.processCommand = function (event) {
   if (event.event) {
     var realEvent = this.deserializeEvent(event.event);
     log(WARN, 'got event', event.event.type, event.event.target, realEvent.target);
+    // FIXME: should handle a cancel during keydown/keypress
+    if (realEvent.type == 'keypress') {
+      event.event.type = 'keydown';
+      var downEvent = this.deserializeEvent(event.event);
+      this.dispatchEvent(downEvent, event.event.target);
+    }
     this.dispatchEvent(realEvent, event.event.target);
+    if (realEvent.type == 'keypress') {
+      event.event.type = 'keyup';
+      var upEvent = this.deserializeEvent(event.event);
+      this.dispatchEvent(upEvent, event.event.target);
+    }
   }
   if (event.change) {
     log(INFO, 'Received change:', event.change, 'target', event.change.target);
@@ -1776,6 +1787,8 @@ Panel.prototype.initPanel = function () {
     var shareField = document.getElementById('jsmirror-share-field');
     var shareText = document.getElementById('jsmirror-share-text');
     shareUrl.addEventListener('click', function (event) {
+      event.preventDefault();
+      event.stopPropagation();
       shareUrl.style.display = 'none';
       shareField.style.display = '';
       shareText.style.display = '';
@@ -1784,8 +1797,6 @@ Panel.prototype.initPanel = function () {
       if (window.clipboardData) {
         window.clipboardData.setData('text', shareField.value);
       }
-      event.preventDefault();
-      event.stopPropagation();
     });
     shareField.addEventListener('blur', function () {
       shareField.style.display = 'none';
