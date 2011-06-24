@@ -202,6 +202,14 @@ Base.prototype.updateScreen = function (newScreen) {
   if (this.panel.viewing) {
     this.showScreen();
   }
+  this.updateScreenArrow();
+};
+
+Base.prototype.updateScreenArrowIfScrolled = function () {
+  if (! this.lastScrollPosition || this.lastScrollPosition !== window.pageYOffset) {
+    this.lastScrollPosition = window.pageYOffset;
+    this.updateScreenArrow();
+  }
 };
 
 Base.prototype.updateScreenArrow = function () {
@@ -255,7 +263,8 @@ function Master(server, channel) {
   this.panel = new Panel(this, true);
   this._boundSendDoc = this.sendDoc.bind(this);
   setInterval(this._boundSendDoc, 5000);
-  setInterval(this.updateScreenArrow.bind(this), 1200);
+  setInterval(this.updateScreenArrowIfScrolled.bind(this), 1200);
+  // This gets rid of garbage elements in this.elements:
   setInterval(this.refreshElements.bind(this), 10000);
   var listener = this.modifiedEvent.bind(this);
   //document.addEventListener('DOMSubtreeModified', listener, true);
