@@ -1797,12 +1797,12 @@ Panel.prototype.initPanel = function () {
       if (window.clipboardData) {
         window.clipboardData.setData('text', shareField.value);
       }
-    });
+    }, false);
     shareField.addEventListener('blur', function () {
       shareField.style.display = 'none';
       shareText.style.display = 'none';
       shareUrl.style.display = '';
-    });
+    }, false);
     shareText.addEventListener('click', function (event) {
       // We don't want clicking the label to cause a blur
       // FIXME: doesn't work, I guess the blur happens first
@@ -1810,7 +1810,7 @@ Panel.prototype.initPanel = function () {
       shareField.select();
       event.preventDefault();
       event.stopPropagation();
-    });
+    }, false);
   }
 };
 
