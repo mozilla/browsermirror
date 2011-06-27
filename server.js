@@ -20,12 +20,12 @@ var SERVER_ADDRESS = null;
 var server = http.createServer(function(req, res){
   var path = url.parse(req.url).pathname || '/';
   if (path == '/') {
-    sendPage(req, res, 'homepage.html');
+    sendPage(req, res, 'data/homepage.html');
   } else if (path.search(/^\/view\//) != -1) {
     var channelName = path.substr(6);
-    sendPage(req, res, 'view.html', {_CHANNEL_: channelName});
-  } else if (path == '/jsmirror.js') {
-    fs.readFile(__dirname + '/jsmirror.js', 'utf8', function (err, data) {
+    sendPage(req, res, 'data/view.html', {_CHANNEL_: channelName});
+  } else if (path == '/mirror.js') {
+    fs.readFile(__dirname + '/lib/mirror.js', 'utf8', function (err, data) {
       fs.readFile(IO_BASE + '/support/socket.io-client/socket.io.js', 'utf8', function (err, data2) {
         res.writeHead(200, {'Content-Type': 'text/javascript'});
         var header = "WEB_SOCKET_SWF_LOCATION = '" + SERVER_ADDRESS + "/WebSocketMainInsecure.swf';\n";
@@ -33,7 +33,7 @@ var server = http.createServer(function(req, res){
       });
     });
   } else if (path == '/WebSocketMainInsecure.swf') {
-    sendPage(req, res, 'WebSocketMainInsecure.swf',
+    sendPage(req, res, 'data/WebSocketMainInsecure.swf',
              {'Content-Type': 'application/x-shockwave-flash', raw: true});
   }
 });
@@ -44,7 +44,7 @@ var extra_js = '\ncheckBookmarklet();\n';
 function sendPage(req, res, filename, vars) {
   vars = vars || {};
   vars._SERVER_ = SERVER_ADDRESS;
-  vars._JSMIRROR_ = SERVER_ADDRESS + '/jsmirror.js';
+  vars._MIRRORJS_ = SERVER_ADDRESS + '/mirror.js';
   vars._SOCKET_IO_ = SERVER_ADDRESS + '/socket.io/socket.io.js';
   //vars._WEB_SOCKET_ = SERVER_ADDRESS + '/socket.io/lib/vendor/web-socket-js/WebSocketMain.swf';
   vars._WEB_SOCKET_ = SERVER_ADDRESS + '/WebSocketMainInsecure.swf';

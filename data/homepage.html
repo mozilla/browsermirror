@@ -46,7 +46,7 @@ div {
     into your bookmark toolbar:</div>
 
   <div style="margin: 1em">
-    <a style="padding: 0.3em; font-size: 120%; border: 2px outset #999; background-color: #ddd; border-radius: 5px; cursor: move;" href="javascript:(function () {window.runBookmarklet = {app: '_SERVER_', token: '_TOKEN_'};var n = 'jsmirror-script';var s = document.getElementById(n);if (s)  document.body.removeChild(s);s = document.createElement('script');s.src = '_JSMIRROR_';s.id = n;document.body.appendChild(s);})()">mirror</a>
+    <a style="padding: 0.3em; font-size: 120%; border: 2px outset #999; background-color: #ddd; border-radius: 5px; cursor: move;" href="javascript:(function () {window.runBookmarklet = {app: '_SERVER_', token: '_TOKEN_'};var n = 'jsmirror-script';var s = document.getElementById(n);if (s)  document.body.removeChild(s);s = document.createElement('script');s.src = '_MIRRORJS_';s.id = n;document.body.appendChild(s);})()">mirror</a>
   </div>
 
   <!-- Source:
@@ -57,7 +57,7 @@ var s = document.getElementById(n);
 if (s)
   document.body.removeChild(s);
 s = document.createElement('script');
-s.src = '_JSMIRROR_';
+s.src = '_MIRRORJS_';
 s.id = n;
 document.body.appendChild(s);
 })()
