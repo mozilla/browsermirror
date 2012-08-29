@@ -1,0 +1,60 @@
+<html>
+  <head>
+    <style type="text/css">
+      * {
+        font-family: sans-serif;
+      }
+      div.block {
+        margin-bottom: 1em;
+      }
+    </style>
+  </head>
+  <body>
+
+<div class="block">
+
+  <span id="jsmirror-view"
+        style="border: 1px outset #999; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #060;"
+        title="Turn this on to show where the remote user is scrolled to"
+        >&#8597</span>
+
+  <span id="jsmirror-highlight"
+        style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #900; font-weight: bold;"
+        title="Press this button and click on the page to highlight a position on the page"
+        >&#10132;</span>
+
+</div>
+
+<div id="jsmirror-container">
+
+  <div class="block">
+
+    <span id="jsmirror-share-text" style="display: none">
+      <label for="jsmirror-share-field">share this link (copied):</label>
+    </span>
+
+    <input type="text"
+           id="jsmirror-share-field"
+           value="..."
+           style="width: 100%; display: none"
+           >
+
+    <a id="jsmirror-share-url"
+       title="Give this link to a friend to let them view your session"
+       href="..."
+       >share</a>
+
+  </div>
+
+  <div class="block">
+    Chat:
+    <div id="jsmirror-chat"></div>
+    <input type="text"
+           id="jsmirror-input"
+           style="border: 1px solid #000; width: 100%;">
+  </div>
+
+</div>
+
+
+</body></html>

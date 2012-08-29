@@ -1,8 +1,16 @@
 {
-  "name": "browsermirror",
-  "fullName": "Browser Mirror",
-  "description": "Browser session sharing",
-  "author": "Ian Bicking <ianb@mozilla.com>",
-  "license": "MPL 1.1/GPL 2.0/LGPL 2.1",
-  "version": "0.1"
+    "name": "browsermirror",
+    "license": "MPL 1.1/GPL 2.0/LGPL 2.1",
+    "author": "Ian Bicking <ianb@mozilla.com>",
+    "version": "0.1",
+    "fullName": "Browser Mirror",
+    "id": "jid1-TppibpBYlnPBrQ",
+    "description": "Browser session sharing",
+    "preferences": [{
+      "name": "server",
+      "title": "Echo/Server URL",
+      "description": "This is where to find the server for echoing messages",
+      "type": "string",
+      "value": "http://localhost:8080"
+    }]
 }

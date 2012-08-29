@@ -1,84 +1,14 @@
 /************************************************************
- * Channel: connection to the server
- */
-
-function Channel(server, channel, receiver) {
-  if (this === window) {
-    throw 'You forgot new';
-  }
-  server = parseUrl(server);
-  this.receiver = receiver;
-  var transports = ['websocket', 'flashsocket', 'htmlfile', 'xhr-multipart',
-                    'xhr-polling', 'jsonp-polling'];
-  if (io.Socket.prototype.isXDomain()) {
-    // This does not seem to work cross-domain:
-    transports.splice(transports.indexOf('flashsocket'), 1);
-  }
-  // FIXME: can't get any other transport working (reliably) cross-domain
-  transports = ['xhr-polling'];
-  if (transports.indexOf('flashsocket') != -1) {
-    WebSocket.__initialize();
-  }
-  this.socket = new io.Socket(server.hostname, {
-    rememberTransport: false,
-    connectTimeout: 5000,
-    reconnect: true,
-    reconnectionDelay: 500,
-    transports: transports,
-    port: server.port
-  });
-  this.socket.on('connect', this.receiver.reconnect.bind(this.receiver));
-  this.socket.on('reconnect', this.receiver.reconnect.bind(this.receiver));
-  this.socket.connect();
-  this.channel = channel;
-  var message = {subscribe: channel, hello: true, isMaster: this.receiver.isMaster}  ;
-  // FIXME: this is kind of a break in the abstraction:
-  if (this.receiver.isMaster) {
-    message.href = location.href;
-  }
-  this.send(message);
-  log(DEBUG, 'created socket', this.socket);
-  var self = this;
-  // FIXME: some sort of queue?
-  // FIXME: handle reconnect_failed event
-  this.socket.on('message', function (msg) {
-    // FIXME: for some reason I'm getting multi-encoding strings?
-    while (typeof msg == 'string') {
-      msg = JSON.parse(msg);
-    }
-    self.receiver.message(msg);
-  });
-  this.shareUrl = server.url + '/view/' + channel;
-  this.chars = 0;
-  this.start = (new Date()).getTime();
-}
-
-Channel.prototype.send = function (message) {
-  var k = keys(message).join(',');
-  if (message.updates) {
-    var l = 0;
-    for (i in message.updates) l++;
-    k += '.len=' + l;
-    k += '.els=' + keys(message.updates);
-  }
-  message.subscribe = this.channel;
-  message = JSON.stringify(message);
-  this.chars += message.length;
-  log(INFO, 'sending message', message.length, k);
-  this.socket.send(message);
-};
-
-Channel.prototype.report = function () {
-  return parseInt(this.chars / 1024) + 'kb, '
-         + parseInt(this.chars / ((new Date()).getTime() - this.start)) + 'kb/s';
-};
-
-/************************************************************
  * Base: base of Master and Mirror
  */
 
 function Base () {
   this.traffic = new TrafficTracker();
+  if (typeof unsafeWindow == "undefined") {
+    this.document = window.document;
+  } else {
+    this.document = unsafeWindow.document;
+  }
 };
 
 Base.prototype.send = function (msg) {
@@ -86,7 +16,7 @@ Base.prototype.send = function (msg) {
   if (this.traffic) {
     this.traffic.track(JSON.stringify(msg).length);
   }
-  this.channel.send(msg);
+  this.connection.send(msg);
 };
 
 Base.prototype.sendChat = function (msgs) {
@@ -155,7 +85,7 @@ Base.prototype.temporaryHighlight = function (el, offsetTop, offsetLeft, mode) {
   offsetLeft = offsetLeft || 0;
   var size = 100;
   var elPos = getElementPosition(el);
-  var circle = document.createElement('div');
+  var circle = this.document.createElement('div');
   circle.style.backgroundColor = 'transparent';
   circle.style.border = '2px solid #f00';
   circle.style.position = 'absolute';
@@ -165,16 +95,16 @@ Base.prototype.temporaryHighlight = function (el, offsetTop, offsetLeft, mode) {
   circle.style.top = (elPos.top + offsetTop - (size/2)) + 'px';
   circle.style.left = (elPos.left + offsetLeft - (size/2)) + 'px';
   circle.jsmirrorHide = true;
-  document.body.appendChild(circle);
+  this.document.body.appendChild(circle);
   function canceller() {
     if (circle !== null) {
-      document.body.removeChild(circle);
+      this.document.body.removeChild(circle);
       circle = null;
     }
   };
-  setTimeout(canceller, TEMPORARY_HIGHLIGHT_DELAY);
+  setTimeout(canceller.bind(this), TEMPORARY_HIGHLIGHT_DELAY);
   if (mode != 'redisplay') {
-    var message = document.createElement('div');
+    var message = this.document.createElement('div');
     message.innerHTML = '<a href="#" style="color: #99f; text-decoration: underline">place noted</a>';
     var anchor = message.getElementsByTagName('a')[0];
     anchor.setAttribute('data-place', JSON.stringify({
@@ -247,7 +177,7 @@ Base.prototype.updateScreenArrow = function () {
       arrow = String.fromCharCode(8595);
     }
   }
-  var el = document.getElementById('jsmirror-view');
+  var el = this.document.getElementById('jsmirror-view');
   if (el.status !== arrow) {
     el.status = arrow;
     el.innerHTML = arrow;
@@ -258,23 +188,24 @@ Base.prototype.updateScreenArrow = function () {
  * Master: the browser that is sending the screen
  */
 
-function Master(server, channel) {
+function Master(connection, shareUrl) {
   if (this === window) {
     throw 'You forgot new';
   }
-  this.channel = new Channel(server, channel, this);
+  this.connection = connection;
+  this.shareUrl = shareUrl;
   this.elements = {};
   this.lastSentDoc = null;
-  this.panel = new Panel(this, true);
+  this.panel = new MockPanel(this, true);
   this._boundSendDoc = this.sendDoc.bind(this);
   setInterval(this._boundSendDoc, 5000);
   setInterval(this.updateScreenArrowIfScrolled.bind(this), 1200);
   // This gets rid of garbage elements in this.elements:
   setInterval(this.refreshElements.bind(this), 10000);
   var listener = this.modifiedEvent.bind(this);
-  //document.addEventListener('DOMSubtreeModified', listener, true);
-  //document.addEventListener('DOMNodeInserted', listener, true);
-  //document.addEventListener('DOMNodeRemoved', listener, true);
+  //this.document.addEventListener('DOMSubtreeModified', listener, true);
+  //this.document.addEventListener('DOMNodeInserted', listener, true);
+  //this.document.addEventListener('DOMNodeRemoved', listener, true);
   this.pendingChanges = [];
   this.pendingChangeTimer = null;
   this.send({href: location.href});
@@ -365,12 +296,12 @@ Master.prototype.sendDoc = function (onsuccess) {
   } else {
     data = {};
     var commands = [];
-    var result = this.diffDocuments(this.lastSentDocData.head, document.head, commands);
+    var result = this.diffDocuments(this.lastSentDocData.head, this.document.head, commands);
     if (result === null) {
       data.doc = docData;
       commands = [];
     } else {
-      result = this.diffDocuments(this.lastSentDocData.body, document.body, commands, false);
+      result = this.diffDocuments(this.lastSentDocData.body, this.document.body, commands, false);
       if (result === null) {
         data.doc = docData;
         commands = [];
@@ -400,9 +331,9 @@ Master.prototype.sendDoc = function (onsuccess) {
   }
   // FIXME: should probably shortcut case where the pixel position of the screen
   // hasn't changed (rather than find element anchors each time)
-  var screen = getScreenRange();
-  screen.start = screen.start.jsmirrorId;
-  screen.end = screen.end.jsmirrorId;
+  var screen = getScreenRange(this.document);
+  screen.start = screen.start && screen.start.jsmirrorId;
+  screen.end = screen.end && screen.end.jsmirrorId;
   if ((! this.lastScreen) || (this.lastScreen !== JSON.stringify(screen))) {
     data.screen = screen;
     this.lastScreen = JSON.stringify(screen);
@@ -484,7 +415,7 @@ Master.prototype.deserializeEvent = function (event) {
   /* Takes an actual event (e.g., mouse click) that was sent
      over the wire, and turns it into a native event */
   var value;
-  var newEvent = document.createEvent(event.module);
+  var newEvent = this.document.createEvent(event.module);
 
   for (var i in event) {
     if (! event.hasOwnProperty(i)) {
@@ -521,13 +452,13 @@ Master.prototype.refreshElements = function () {
     elements[el.jsmirrorId] = el;
     for (var i=0; i<el.childNodes.length; i++) {
       var child = el.childNodes[i];
-      if (child.nodeType === document.ELEMENT_NODE) {
+      if (child.nodeType === this.document.ELEMENT_NODE) {
         recur(elements, child);
       }
     }
   }
-  recur(this.elements, document.head);
-  recur(this.elements, document.body);
+  recur(this.elements, this.document.head);
+  recur(this.elements, this.document.body);
 };
 
 Master.prototype.dispatchEvent = function (event, target) {
@@ -550,7 +481,7 @@ Master.prototype.dispatchEvent = function (event, target) {
     }
   } else {
     // FIXME: do other default actions
-    document.dispatchEvent(event);
+    this.document.dispatchEvent(event);
   }
 };
 
@@ -600,7 +531,7 @@ Master.prototype.initEvent = function (event, data, module) {
       type:data.type,
       canBubble:data.canBubble || true,
       cancelable:data.cancelable || true,
-      view:document.defaultView,
+      view:this.document.defaultView,
       detail:data.detail === undefined ? 1 : this.detail,
       screenX:data.screenX,
       screenY:data.screenY,
@@ -616,7 +547,7 @@ Master.prototype.initEvent = function (event, data, module) {
       data.type,
       data.canBubble || true,
       data.cancelable || true,
-      document.defaultView,
+      this.document.defaultView,
       1,//data.detail,
       data.screenX,
       data.screenY,
@@ -665,7 +596,7 @@ Master.prototype.processChange = function (event) {
   var target = this.getElement(event.target);
   log(INFO, 'Updating', target, 'to value', event.value);
   target.value = event.value;
-  var realEvent = document.createEvent('UIEvent');
+  var realEvent = this.document.createEvent('UIEvent');
   realEvent.initUIEvent(
     'change',
     true, // canBubble
@@ -682,7 +613,7 @@ Master.prototype.processChange = function (event) {
   // A normal change event will also fire lots of keydown and keyup events
   // which sometimes are caught instead of a change event.  We'll trigger
   // a keyup event just to make sure...
-  realEvent = document.createEvent('KeyboardEvent');
+  realEvent = this.document.createEvent('KeyboardEvent');
   // FIXME: is it okay to leave both keyCode and charCode as 0?
   // FIXME: probably should only fire on text fields
   var method = realEvent.initKeyboardEvent ? 'initKeyboardEvent' : 'initKeyEvent';
@@ -755,11 +686,12 @@ Master.prototype.skipElement = function (el) {
 Master.prototype.serializeDocument = function () {
   /* Serializes a complete document to JSON object */
   // FIXME: should I clear this.elements here?
+  var doc = unsafeWindow.document;
   var result = {
     href: location.href,
-    htmlAttrs: this.serializeAttributes(document.childNodes[0]),
-    head: this.serializeElement(document.head),
-    body: this.serializeElement(document.body),
+    htmlAttrs: this.serializeAttributes(doc.childNodes[0]),
+    head: this.serializeElement(doc.head),
+    body: this.serializeElement(doc.body),
     hash: location.hash || ""
   };
   return result;
@@ -819,7 +751,7 @@ Master.prototype.serializeAttributes = function (el) {
       } else if (attrName == 'href' || attrName == 'src' || attrName == 'value') {
         attrs[attrName] = el[attrName];
       } else {
-        attrs[attrName] = el.attributes[i].nodeValue;
+        attrs[attrName] = el.attributes[i].value;
       }
     }
   }
@@ -1029,7 +961,7 @@ Master.prototype.normalChildren = function (el) {
     if (this.skipElement(child)) {
       continue;
     }
-    if (child.nodeType == document.TEXT_NODE) {
+    if (child.nodeType == this.document.TEXT_NODE) {
       var value = child.nodeValue;
       if (! value) {
         continue;
@@ -1040,7 +972,7 @@ Master.prototype.normalChildren = function (el) {
       } else {
         result.push(value);
       }
-    } else if (child.nodeType == document.ELEMENT_NODE) {
+    } else if (child.nodeType == this.document.ELEMENT_NODE) {
       result.push(child);
     }
   }
@@ -1073,7 +1005,7 @@ Master.prototype.queryHref = function (href) {
   if (this.queryHrefCancel) {
     this.queryHrefCancel();
   }
-  var div = document.createElement('div');
+  var div = this.document.createElement('div');
   div.style.position = 'fixed';
   div.style.zIndex = '10002';
   div.style.top = parseInt((window.innerHeight - 50)/2) + 'px';
@@ -1091,13 +1023,13 @@ Master.prototype.queryHref = function (href) {
     + '<a style="margin-left: 1em; color: #99f; text-decoration: underline" href="' + href + '" target="_blank">' + href + '</a><br>'
     + 'Do you want to go? <button id="jsmirror-yes">Go!</button>  <button id="jsmirror-no">Cancel</button><br>'
     + 'Note: you must re-activate the bookmarklet once you get to the new page!';
-  document.body.appendChild(div);
-  var yes = document.getElementById('jsmirror-yes');
-  var no = document.getElementById('jsmirror-no');
+  this.document.body.appendChild(div);
+  var yes = this.document.getElementById('jsmirror-yes');
+  var no = this.document.getElementById('jsmirror-no');
   var self = this;
   function cancel() {
-    document.body.removeChild(div);
-    document.removeEventListener('click', maybeCancel, true);
+    this.document.body.removeChild(div);
+    this.document.removeEventListener('click', maybeCancel, true);
     self.sendChat(["The other person cancelled your attempt to visit " + href]);
     self.queryHrefCancel = null;
   };
@@ -1120,7 +1052,7 @@ Master.prototype.queryHref = function (href) {
     event.stopPropagation();
     cancel();
   }
-  document.addEventListener('click', maybeCancel, true);
+  this.document.addEventListener('click', maybeCancel, true);
   this.queryHrefCancel = cancel;
   // FIXME: not sure these will ever happen given maybeCancel:
   yes.addEventListener('click', function () {
@@ -1134,11 +1066,11 @@ Master.prototype.queryHref = function (href) {
  The mirror/client
  */
 
-function Mirror(server, channel) {
+function Mirror(connection) {
   if (this === window) {
     throw 'You forgot new';
   }
-  this.channel = new Channel(server, channel, this);
+  this.connection = connection;
   var self = this;
   this._boundCatchEvent = this.catchEvent.bind(this);
   this._boundChangeEvent = this.changeEvent.bind(this);
@@ -1170,7 +1102,7 @@ Mirror.prototype.processCommand = function (event) {
     return;
   }
   if (event.hello && event.isMaster) {
-    var waitingEl = document.getElementById('jsmirror-waiting');
+    var waitingEl = this.document.getElementById('jsmirror-waiting');
     console.log('hellod', waitingEl, href, event.isMaster);
     if (waitingEl) {
       waitingEl.innerHTML = 'Connected, receiving document...';
@@ -1245,7 +1177,7 @@ Mirror.prototype.sendStatus = function () {
   if (range) {
     data.range = range;
   }
-  data.screen = getScreenRange();
+  data.screen = getScreenRange(this.document);
   if ((! data.screen) || (! data.screen.start) || (! data.screen.start.jsmirrorId)) {
     // Screen is rearranging...
     delete data.screen;
@@ -1291,7 +1223,7 @@ Mirror.prototype.removeRange = function () {
 Mirror.prototype.showRange = function (range) {
   var self = this;
   showRange(range, function (el) {
-    if (el.nodeType == document.ELEMENT_NODE && (! el.jsmirrorHide)) {
+    if (el.nodeType == this.document.ELEMENT_NODE && (! el.jsmirrorHide)) {
       el.oldBackgroundColor = el.style.backgroundColor;
       // FIXME: not always a good default highlight:
       el.style.backgroundColor = '#ff9';
@@ -1305,16 +1237,16 @@ Mirror.prototype.setDoc = function (doc) {
     this.lastHref = doc.href;
   }
   if (doc.htmlAttrs) {
-    this.setAttributes(document.childNodes[0], doc.htmlAttrs);
+    this.setAttributes(this.getHTMLTag(), doc.htmlAttrs);
   }
   if (doc.head) {
-    this.setElement(document.head, doc.head);
+    this.setElement(this.document.head, doc.head);
   }
   if (doc.href) {
     this.setBase(doc.href);
   }
   if (doc.body) {
-    this.setElement(document.body, doc.body);
+    this.setElement(this.document.body, doc.body);
   }
   if (doc.hash || doc.hash === "") {
     location.hash = doc.hash;
@@ -1324,6 +1256,10 @@ Mirror.prototype.setDoc = function (doc) {
       this.panel.displayMessage(doc.chatMessages[i], false);
     }
   }
+};
+
+Mirror.prototype.getHTMLTag = function () {
+  return this.document.getElementsByTagName('HTML')[0];
 };
 
 // FIXME: ugh, so inefficient...
@@ -1337,7 +1273,7 @@ Mirror.prototype.getElementInside = function (el, jsmirrorId) {
   }
   for (var i=0; i<el.childNodes.length; i++) {
     var node = el.childNodes[i];
-    if (node.nodeType == document.ELEMENT_NODE) {
+    if (node.nodeType == this.document.ELEMENT_NODE) {
       var value = this.getElementInside(node, jsmirrorId);
       if (value) {
         return value;
@@ -1348,7 +1284,7 @@ Mirror.prototype.getElementInside = function (el, jsmirrorId) {
 };
 
 Mirror.prototype.getElement = function (jsmirrorId) {
-  return this.getElementInside(document.body, jsmirrorId);
+  return this.getElementInside(this.document.body, jsmirrorId);
 };
 
 Mirror.prototype.setElement = function (el, serialized) {
@@ -1376,8 +1312,8 @@ Mirror.prototype.setElement = function (el, serialized) {
       i--;
       continue;
     } else if (typeof children[i] == 'string') {
-      if (existing.nodeType != document.TEXT_NODE) {
-        existing.parentNode.replaceChild(document.createTextNode(children[i]), existing);
+      if (existing.nodeType != this.document.TEXT_NODE) {
+        existing.parentNode.replaceChild(this.document.createTextNode(children[i]), existing);
       } else {
         existing.nodeValue = children[i];
       }
@@ -1408,6 +1344,10 @@ Mirror.prototype.setAttributes = function (el, attrs) {
       el.value = attrs[i];
     }
   }
+  if (! el.attributes) {
+    console.trace();
+    console.log('el.attributes?', el, el.tagName);
+  }
   if (el.attributes.length > attrLength) {
     // There must be an extra attribute to be deleted
     var toDelete = [];
@@ -1425,19 +1365,19 @@ Mirror.prototype.setAttributes = function (el, attrs) {
 
 Mirror.prototype.setBase = function (baseHref) {
   /* Sets the <base href> of the document */
-  var existing = document.getElementsByTagName('base');
+  var existing = this.document.getElementsByTagName('base');
   for (var i=0; i<existing.length; i++) {
     existing[i].parentNode.removeChild(existing[i]);
   }
-  var base = document.createElement('base');
+  var base = this.document.createElement('base');
   base.href = baseHref;
-  document.head.appendChild(base);
+  this.document.head.appendChild(base);
 };
 
 Mirror.prototype.deserializeElement = function (data) {
   /* Creates an element to match the given data */
   if (typeof data == 'string') {
-    return document.createTextNode(data);
+    return this.document.createTextNode(data);
   }
   var tagName = data[0];
   var jsmirrorId = data[1];
@@ -1450,11 +1390,11 @@ Mirror.prototype.deserializeElement = function (data) {
     } else {
       var text = "";
     }
-    el = document.createComment(text);
+    el = this.document.createComment(text);
     el.jsmirrorId = jsmirrorId;
     return el;
   }
-  el = document.createElement(tagName);
+  el = this.document.createElement(tagName);
   try {
   for (var i in attrs) {
     if (attrs.hasOwnProperty(i)) {
@@ -1470,7 +1410,7 @@ Mirror.prototype.deserializeElement = function (data) {
   for (var i=0; i<children.length; i++) {
     var o = children[i];
     if (typeof o == "string") {
-      el.appendChild(document.createTextNode(o));
+      el.appendChild(this.document.createTextNode(o));
     } else {
       el.appendChild(this.deserializeElement(o));
     }
@@ -1501,12 +1441,12 @@ Mirror.prototype.applyDiff = function (commands) {
       this.setAttributes(el, command[2]);
     }
     if (name === 'deletetext-' || name === 'delete-' || name == 'delete-+') {
-      while (el.previousSibling && el.previousSibling.nodeType == document.TEXT_NODE) {
+      while (el.previousSibling && el.previousSibling.nodeType == this.document.TEXT_NODE) {
         el.parentNode.removeChild(el.previousSibling);
       }
     }
     if (name === 'delete+') {
-      while (el.nextSibling && el.nextSibling.nodeType == document.TEXT_NODE) {
+      while (el.nextSibling && el.nextSibling.nodeType == this.document.TEXT_NODE) {
         el.parentNode.removeChild(el.nextSibling);
       }
     }
@@ -1516,7 +1456,7 @@ Mirror.prototype.applyDiff = function (commands) {
     if (name === 'delete_last_text') {
       if (el.childNodes.length) {
         var lastEl = el.childNodes[el.childNodes.length-1];
-        if (lastEl.nodeType != document.TEXT_NODE) {
+        if (lastEl.nodeType != this.document.TEXT_NODE) {
           log(WARN, "Got command that deletes something that isn't text", command, lastEl);
           continue;
         } else {
@@ -1528,11 +1468,11 @@ Mirror.prototype.applyDiff = function (commands) {
       }
     }
     if (name === 'replace_text') {
-      if (el.childNodes.length !== 1 || el.childNodes[0].nodeType !== document.TEXT_NODE) {
+      if (el.childNodes.length !== 1 || el.childNodes[0].nodeType !== this.document.TEXT_NODE) {
         while (el.childNodes) {
           el.removeChild(el.childNodes[0]);
         }
-        el.appendChild(document.createTextNode(command[2]));
+        el.appendChild(this.document.createTextNode(command[2]));
       } else {
         el.childNodes[0].nodeValue = command[2];
       }
@@ -1541,7 +1481,7 @@ Mirror.prototype.applyDiff = function (commands) {
       var pushes = command[2];
       for (var j=pushes.length-1; j>=0; j--) {
         if (typeof pushes[j] == 'string') {
-          var child = document.createTextNode(pushes[j]);
+          var child = this.document.createTextNode(pushes[j]);
         } else {
           var child = this.deserializeElement(pushes[j]);
         }
@@ -1552,7 +1492,7 @@ Mirror.prototype.applyDiff = function (commands) {
       var pushes = command[2];
       for (var j=0; j<pushes.length; j++) {
         if (typeof pushes[j] == 'string') {
-          var child = document.createTextNode(pushes[j]);
+          var child = this.document.createTextNode(pushes[j]);
         } else {
           var child = this.deserializeElement(pushes[j]);
         }
@@ -1606,7 +1546,7 @@ Mirror.prototype.catchEvents = function () {
   /* Catches all events in docEvents */
   var self = this;
   for (var i=0; i<this.docEvents.length; i++) {
-    document.addEventListener(this.docEvents[i], this._boundCatchEvent, true);
+    this.document.addEventListener(this.docEvents[i], this._boundCatchEvent, true);
   }
 };
 
@@ -1691,7 +1631,8 @@ function Panel(controller, isMaster) {
   this.isMaster = isMaster;
   var self = this;
   this._boundHighlightListener = this.highlightListener.bind(this);
-  if (! document.body) {
+  this.document = controller.document;
+  if (! this.document.body) {
     // We have to defer the actual creation
     window.addEventListener('load', this.initPanel.bind(this), false);
   } else {
@@ -1701,7 +1642,7 @@ function Panel(controller, isMaster) {
 
 Panel.prototype.initPanel = function () {
   var self = this;
-  this.box = document.createElement('div');
+  this.box = this.document.createElement('div');
   this.box.jsmirrorHide = true;
   this.box.style.position = 'fixed';
   this.box.style.top = '0.5em';
@@ -1717,13 +1658,13 @@ Panel.prototype.initPanel = function () {
     + '<span id="jsmirror-hide" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center">&#215;</span>'
     + '</div>'
     + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><span id="jsmirror-share-text" style="display: none"><label for="jsmirror-share-field">copy this link:</label></span><input type="text" id="jsmirror-share-field" value="' + this.controller.channel.shareUrl + '" style="padding: 0; margin: 0; border: 1px solid #000; width: 8em; display: none"><a id="jsmirror-share-url" title="Give this link to a friend to let them view your session" href="' + this.controller.channel.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '')
+    + (this.isMaster ? '<div><span id="jsmirror-share-text" style="display: none"><label for="jsmirror-share-field">copy this link:</label></span><input type="text" id="jsmirror-share-field" value="' + this.controller.connection.shareUrl + '" style="padding: 0; margin: 0; border: 1px solid #000; width: 8em; display: none"><a id="jsmirror-share-url" title="Give this link to a friend to let them view your session" href="' + this.controller.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '')
     + 'Chat:<div id="jsmirror-chat"></div>'
     + '<input type="text" id="jsmirror-input" style="width: 100%; font-size: 10px; background-color: #999; color: #000; border: 1px solid #000;">'
     + '</div>';
-  document.body.appendChild(this.box);
-  var hideContainer = document.getElementById('jsmirror-container');
-  var hideButton = document.getElementById('jsmirror-hide');
+  this.document.body.appendChild(this.box);
+  var hideContainer = this.document.getElementById('jsmirror-container');
+  var hideButton = this.document.getElementById('jsmirror-hide');
   hideButton.addEventListener('click', function () {
     var borderBox = self.box.getElementsByTagName('div')[0];
     var buttonBox = borderBox.getElementsByTagName('div')[0];
@@ -1747,14 +1688,14 @@ Panel.prototype.initPanel = function () {
       buttonBox.style.borderRadius = '3px';
     }
   }, false);
-  this.highlightButton = document.getElementById('jsmirror-highlight');
+  this.highlightButton = this.document.getElementById('jsmirror-highlight');
   this.highlightButton.addEventListener('click', function () {
-    document.addEventListener('click', self._boundHighlightListener, true);
+    this.document.addEventListener('click', self._boundHighlightListener, true);
     inHighlighting = true;
     self.highlightButton.style.backgroundColor = '#f00';
     self.highlightButton.style.color = '#fff';
   }, false);
-  this.viewButton = document.getElementById('jsmirror-view');
+  this.viewButton = this.document.getElementById('jsmirror-view');
   this.viewing = false;
   this.viewButton.addEventListener('click', function () {
     self.viewing = !self.viewing;
@@ -1768,8 +1709,8 @@ Panel.prototype.initPanel = function () {
       self.controller.hideScreen();
     }
   }, false);
-  this.chatDiv = document.getElementById('jsmirror-chat');
-  var chatInput = document.getElementById('jsmirror-input');
+  this.chatDiv = this.document.getElementById('jsmirror-chat');
+  var chatInput = this.document.getElementById('jsmirror-input');
   chatInput.addEventListener('keypress', function (event) {
     if (event.keyCode == 13) { // Enter
       var message = chatInput.value;
@@ -1783,9 +1724,9 @@ Panel.prototype.initPanel = function () {
     }
   }, false);
   if (this.isMaster) {
-    var shareUrl = document.getElementById('jsmirror-share-url');
-    var shareField = document.getElementById('jsmirror-share-field');
-    var shareText = document.getElementById('jsmirror-share-text');
+    var shareUrl = this.document.getElementById('jsmirror-share-url');
+    var shareField = this.document.getElementById('jsmirror-share-field');
+    var shareText = this.document.getElementById('jsmirror-share-text');
     shareUrl.addEventListener('click', function (event) {
       event.preventDefault();
       event.stopPropagation();
@@ -1821,7 +1762,7 @@ var inHighlighting = false;
 
 Panel.prototype.highlightListener = function (event) {
   var self = this;
-  document.removeEventListener('click', self._boundHighlightListener, true);
+  this.document.removeEventListener('click', self._boundHighlightListener, true);
   if (! inHighlighting) {
     // This shouldn't happen
     log(INFO, 'highlightListener got event, but should not have');
@@ -1840,7 +1781,7 @@ Panel.prototype.highlightListener = function (event) {
   this.controller.sendHighlight(this.highlightedElement.jsmirrorId, offsetTop, offsetLeft);
   this.highlightButton.style.backgroundColor = '';
   this.highlightButton.style.color = '#f00';
-  document.removeEventListener('click', self._boundHighlightListener, true);
+  this.document.removeEventListener('click', self._boundHighlightListener, true);
   event.preventDefault();
   event.stopPropagation();
   return true;
@@ -1856,14 +1797,14 @@ Panel.prototype.displayMessage = function (message, here) {
      otherwise remote */
   var div;
   if (typeof message == 'string') {
-    div = document.createElement('div');
+    div = this.document.createElement('div');
     div.style.margin = '0';
     div.style.padding = '2px';
     div.style.borderBottom = '1px solid #888';
     if (! here) {
       div.style.backgroundColor = '#666';
     }
-    div.appendChild(document.createTextNode(message));
+    div.appendChild(this.document.createTextNode(message));
   } else {
     div = message;
     if (! here) {
@@ -1873,9 +1814,22 @@ Panel.prototype.displayMessage = function (message, here) {
   this.chatDiv.appendChild(div);
 };
 
+function MockPanel(controller, isMaster) {
+  this.controller = controller;
+  this.isMaster = isMaster;
+};
+
+MockPanel.prototype = {
+
+  displayMessage: function (message, here) {
+    self.port.emit("ChatMessage", message, here);
+  }
+
+};
+
 function createVisualFrame(top, bottom) {
   function createElement(left) {
-    var div = document.createElement('div');
+    var div = this.document.createElement('div');
     div.style.position = 'absolute';
     div.style.height = (bottom-top) + 'px';
     div.style.width = '1px';
@@ -1884,7 +1838,7 @@ function createVisualFrame(top, bottom) {
     div.style.borderLeft = '3px solid #f00';
     div.style.zIndex = '10000';
     div.jsmirrorHide = true;
-    document.body.appendChild(div);
+    this.document.body.appendChild(div);
     return div;
   }
   return {
@@ -1894,8 +1848,8 @@ function createVisualFrame(top, bottom) {
 }
 
 function removeVisualFrame(frame) {
-  document.body.removeChild(frame.left);
-  document.body.removeChild(frame.right);
+  this.document.body.removeChild(frame.left);
+  this.document.body.removeChild(frame.right);
 }
 
 function getElementPosition(el) {
@@ -1927,18 +1881,23 @@ function checkBookmarklet() {
 function doOnLoad(func) {
   /* Runs a function on window load, or immediately if the window has
      already loaded */
-  if (document.readyState == 'complete') {
+  if (this.document.readyState == 'complete') {
     func();
   } else {
     window.addEventListener('load', func, false);
   }
 }
 
-function getScreenRange() {
+function getScreenRange(document) {
   /* Returns {start, end} where these elements are the closest ones
      to the top and bottom of the currently-visible screen. */
-  var start = window.pageYOffset;
-  var end = start + window.innerHeight;
+  if (typeof unsafeWindow == "undefined") {
+    var win = window;
+  } else {
+    var win = unsafeWindow;
+  }
+  var start = win.pageYOffset;
+  var end = start + win.innerHeight;
   var nodes = iterNodes(document.body);
   var atStart = true;
   var startEl = null;
@@ -2001,7 +1960,7 @@ function iterNodes(start) {
       if (! result) {
         throw 'weird item in stack';
       }
-      if (result.nodeType == document.ELEMENT_NODE && result.childNodes.length) {
+      if (result.nodeType == this.document.ELEMENT_NODE && result.childNodes.length) {
         // Put the children into the item's place
         stack[cursor] = [result.childNodes, 0];
       } else {
@@ -2014,7 +1973,7 @@ function iterNodes(start) {
       if (! result) {
         throw 'weird item in stack';
       }
-      if (result.nodeType == document.ELEMENT_NODE && result.childNodes.length) {
+      if (result.nodeType == this.document.ELEMENT_NODE && result.childNodes.length) {
         // Add this new element's child to the stack
         if (item[1] >= (item[0].length - 1)) {
           stack[cursor] = [result.childNodes, 0];
@@ -2086,6 +2045,9 @@ VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; WARN = ERROR = 50; CRITICAL = 
 LOG_LEVEL = DEBUG;
 
 function log(level) {
+  if (level > WARN && console.trace) {
+    console.trace();
+  }
   if (typeof console == 'undefined') {
     return;
   }
@@ -2127,18 +2089,18 @@ function expandRange(range) {
                 startOffset: range.startOffset, endOffset: range.endOffset,
                 startText: false, endText: false};
   function doit(name) {
-    if (result[name].nodeType == document.TEXT_NODE) {
+    if (result[name].nodeType == this.document.TEXT_NODE) {
       while (true) {
         var prev = result[name].previousSibling;
         if (prev === null) {
           result[name] = result[name].parentNode;
           result[name+'Text'] = 'inner';
           break;
-        } else if (prev.nodeType == document.ELEMENT_NODE) {
+        } else if (prev.nodeType == this.document.ELEMENT_NODE) {
           result[name] = prev;
           result[name+'Text'] = 'after';
           break;
-        } else if (prev.nodeType == document.TEXT_NODE) {
+        } else if (prev.nodeType == this.document.TEXT_NODE) {
           result[name] = prev;
           result[name+'Offset'] += prev.nodeValue.length;
         }
@@ -2206,7 +2168,7 @@ function containsElement(container, subelement) {
   if (container == subelement) {
     return false;
   }
-  if (container.nodeType != document.ELEMENT_NODE) {
+  if (container.nodeType != this.document.ELEMENT_NODE) {
     return false;
   }
   for (var i=0; i<container.childNodes.length; i++) {
@@ -2238,10 +2200,10 @@ function getNextElement(el) {
 function splitTextBefore(el, offset) {
   /* Creates a node that emcompasses all the text starting at el
      and going offset characters */
-  var span = document.createElement('span');
+  var span = this.document.createElement('span');
   span.artificialRangeElement = true;
   var text = '';
-  if (el.nodeType != document.TEXT_NODE) {
+  if (el.nodeType != this.document.TEXT_NODE) {
     throw 'Unexpected node: ' + el;
   }
   while (el.nodeValue.length < offset) {
@@ -2254,7 +2216,7 @@ function splitTextBefore(el, offset) {
   text += el.nodeValue.substr(0, offset);
   var rest = el.nodeValue.substr(offset, el.nodeValue.length-offset);
   el.nodeValue = rest;
-  span.appendChild(document.createTextNode(text));
+  span.appendChild(this.document.createTextNode(text));
   el.parentNode.insertBefore(span, el);
   return span;
 }
@@ -2276,20 +2238,20 @@ function splitTextAfter(el, offset) {
   }
   var rest = el.nodeValue.substr(offset, el.nodeValue.length-offset);
   el.nodeValue = el.nodeValue.substr(0, offset);
-  var last = document.createElement('span');
+  var last = this.document.createElement('span');
   last.artificialRangeElement = true;
   var span = last;
-  last.appendChild(document.createTextNode(rest));
+  last.appendChild(this.document.createTextNode(rest));
   el.parentNode.insertBefore(last, el.nextSibling);
   var pos = last.nextSibling;
   while (pos) {
-    if (pos.nodeType == document.TEXT_NODE) {
+    if (pos.nodeType == this.document.TEXT_NODE) {
       if (last) {
         var here = pos;
         pos = pos.nextSibling;
         last.appendChild(here);
       } else {
-        last = document.createElement('span');
+        last = this.document.createElement('span');
         last.artificialRangeElement = true;
         var here = pos;
         pos = pos.nextSibling;
@@ -2319,7 +2281,7 @@ function splitTextBetween(el, start, end) {
   var textNodes = [];
   for (var i=0; i<el.childNodes.length; i++) {
     var node = el.childNodes[i];
-    if (node.nodeType != document.TEXT_NODE) {
+    if (node.nodeType != this.document.TEXT_NODE) {
       if (inEnd) {
         break;
       }
@@ -2350,11 +2312,11 @@ function splitTextBetween(el, start, end) {
       endText += text;
     }
   }
-  var startNode = document.createTextNode(startText);
-  var endNode = document.createTextNode(endText);
-  var innerNode = document.createElement('span');
+  var startNode = this.document.createTextNode(startText);
+  var endNode = this.document.createTextNode(endText);
+  var innerNode = this.document.createElement('span');
   innerNode.artificialRangeElement = true;
-  innerNode.appendChild(document.createTextNode(innerText));
+  innerNode.appendChild(this.document.createTextNode(innerText));
   for (i=0; i<textNodes.length; i++) {
     el.removeChild(textNodes[i]);
   }
@@ -2438,7 +2400,7 @@ TrafficTracker.prototype.track = function (chars, reason) {
 
 TrafficTracker.prototype.show = function (panel) {
   var box = panel.box;
-  this.div = document.createElement('div');
+  this.div = this.document.createElement('div');
   this.div.innerHTML = 'Traffic:<br><div id="jsmirror-traffic-tracking"></div>';
   box.appendChild(this.div);
   this.updateDisplay();
@@ -2448,7 +2410,7 @@ TrafficTracker.prototype.updateDisplay = function () {
   if (! this.div) {
     return;
   }
-  var container = document.getElementById('jsmirror-traffic-tracking');
+  var container = this.document.getElementById('jsmirror-traffic-tracking');
   var totalTime = (new Date()).getTime() - this.started;
   var rest = '';
   for (var i=0; i<this.marks.length; i++) {
