@@ -11,6 +11,13 @@
       "title": "Echo/Server URL",
       "description": "This is where to find the server for echoing messages",
       "type": "string",
-      "value": "http://localhost:8080"
+      "value": "https://browsermirror.ianbicking.org"
+    },
+    {
+      "name": "stickyShareId",
+      "title": "Sticky share ID",
+      "description": "For testing, you can force your shared session to always be at the same URL.  Enter a value like email@example.com",
+      "type": "string",
+      "value": ""
     }]
 }

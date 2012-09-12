@@ -29,6 +29,7 @@ class Queue(object):
 
     def send_message(self, message, from_socket=None):
         for socket in self.sockets:
+            print 'sending message to', socket, from_socket
             if from_socket and from_socket is socket:
                 continue
             socket.write_message(message)
@@ -105,13 +106,13 @@ class XhrHandler(RequestHandler):
 
 
 application = Application([
-        (r'^/hub/(\w+)/xhr$', XhrHandler),
-        (r'^/hub/(\w+)$', EchoWebSocket),
-        (r'^/\w+/?()$', StaticFileHandler,
+        (r'^/hub/([0-9a-zA-Z_\-.@]+)/xhr$', XhrHandler),
+        (r'^/hub/([0-9a-zA-Z_\-.@]+)$', EchoWebSocket),
+        (r'^/[0-9a-zA-Z_\-.@]+/?()$', StaticFileHandler,
          dict(path=os.path.join(here, '../data/'),
               default_filename='view.html')),
         (r'^/()$', StaticFileHandler,
          dict(path=os.path.join(here, '../data/homepage.html'))),
-        (r'^/(.*)', StaticFileHandler,
+        (r'^/static/(.*)', StaticFileHandler,
          dict(path=os.path.join(here, '../data')))
         ])

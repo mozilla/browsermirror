@@ -1,4 +1,4 @@
-function Connection(address) {
+function Connection(address, isMaster) {
   if (address.search(/^https?:\/\//i) === 0) {
     address = address.replace(/^http/i, 'ws');
   }
@@ -9,6 +9,7 @@ function Connection(address) {
   this.onerror = null;
   this.socket = null;
   this.xhrSince = 0;
+  this.isMaster = isMaster;
   this.setupConnection();
 }
 
@@ -18,22 +19,34 @@ Connection.prototype = {
 
   setupConnection: function () {
     if (typeof WebSocket != "undefined") {
-      console.log('Setup WebSocket connection to', this.address);
+      log(INFO, 'Setup WebSocket connection to', this.address);
+      // Note, this seems to fail when the page is an https page
+      // (perhaps when the websocket is ws:, not wss:)
+      //
+      // FIXME: we'd like to change the Origin of the WebSocket, using
+      // magical high-permission powers, but as it stands currently
+      // the Origin will be the current page.
       this.socket = new WebSocket(this.address);
       this.socket.onopen = (function () {
+        console.log('WebSocket connection initiated.');
         this.flush();
       }).bind(this);
       this.socket.onmessage = (function (event) {
-        this.ondata([JSON.parse(event.data)]);
+        this.ondata([JSON.parse(event.code)]);
       }).bind(this);
-      this.socket.onclose = (function () {
+      this.socket.onerror = (function (event) {
+        console.log('WebSocket error:', event.data);
+      }).bind(this);
+      this.socket.onclose = (function (event) {
+        console.log('WebSocket close', event.wasClean ? 'clean' : 'unclean',
+                    'code:', event.code, 'reason:', event.reason || 'none');
         this.setupConnection();
       }).bind(this);
     } else {
       this.schedulePoll();
-      console.log('Setup XHR polling to', this.address);
+      log(INFO, 'Setup XHR polling to', this.address);
     }
-    this.send({hello: true});
+    this.send({hello: true, isMaster: this.isMaster});
   },
 
   schedulePoll: function () {
@@ -45,7 +58,6 @@ Connection.prototype = {
   },
 
   send: function (data) {
-    console.log('sending data', JSON.stringify(data).length);
     this.queue.push(data);
     this.flush();
   },
@@ -65,9 +77,7 @@ Connection.prototype = {
     if (! this.socket) {
       this.postXhr();
     } else if (this.socket.readyState == this.socket.OPEN) {
-      console.log('sending items to socket', this.queue.length);
       for (var i=0; i<this.queue.length; i++) {
-        console.log('sending', this.socket, JSON.stringify(this.queue[i]).length);
         this.socket.send(JSON.stringify(this.queue[i]));
       }
       this.queue = [];
@@ -110,20 +120,3 @@ Connection.prototype = {
   }
 
 };
-
-
-/*
-var connection = null;
-
-if (typeof self !== "undefined") {
-  self.port.on("StartConnection", function (address) {
-    connection = new Connection(address);
-    connection.ondata = function (datas) {
-      self.port.emit("Data", datas);
-    };
-    connection.onerror = function (error) {
-      self.port.emit("Error", error);
-    };
-  });
-}
-*/
