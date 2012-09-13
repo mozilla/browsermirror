@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 
 
 from __future__ import absolute_import, division, with_statement
@@ -64,9 +57,11 @@ class ProcessTest(LogTrapTestCase):
             return "http://127.0.0.1:%d%s" % (port, path)
         sockets = bind_sockets(port, "127.0.0.1")
         # ensure that none of these processes live too long
-        signal.alarm(5)
+        signal.alarm(5)  # master process
         try:
             id = fork_processes(3, max_restarts=3)
+            self.assertTrue(id is not None)
+            signal.alarm(5)  # child processes
         except SystemExit, e:
             # if we exit cleanly from fork_processes, all the child processes
             # finished with status 0
@@ -133,4 +128,3 @@ class ProcessTest(LogTrapTestCase):
 if os.name != 'posix' or sys.platform == 'cygwin':
     # All sorts of unixisms here
     del ProcessTest
-

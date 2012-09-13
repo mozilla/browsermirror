@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2011 Facebook
 #
@@ -163,4 +156,3 @@ def task_id():
     """
     global _task_id
     return _task_id
-

@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 
 
 from __future__ import absolute_import, division, with_statement
@@ -204,4 +197,3 @@ class EscapeTestCase(unittest.TestCase):
         self.assertEqual(json_decode(json_encode(u"\u00e9")), u"\u00e9")
         self.assertEqual(json_decode(json_encode(utf8(u"\u00e9"))), u"\u00e9")
         self.assertRaises(UnicodeDecodeError, json_encode, b("\xe9"))
-

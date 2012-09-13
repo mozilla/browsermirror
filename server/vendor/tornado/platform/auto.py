@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2011 Facebook
 #
@@ -39,4 +32,3 @@ if os.name == 'nt':
     from tornado.platform.windows import set_close_exec
 else:
     from tornado.platform.posix import set_close_exec, Waker
-

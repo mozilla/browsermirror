@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2010 Facebook
 #
@@ -202,7 +195,9 @@ def wrap(fn):
     # functools.wraps doesn't appear to work on functools.partial objects
     #@functools.wraps(fn)
 
-    def wrapped(callback, contexts, *args, **kwargs):
+    def wrapped(*args, **kwargs):
+        callback, contexts, args = args[0], args[1], args[2:]
+
         if contexts is _state.contexts or not contexts:
             callback(*args, **kwargs)
             return
@@ -276,4 +271,3 @@ def _nested(*managers):
             # the right information. Another exception may
             # have been raised and caught by an exit method
             raise_exc_info(exc)
-

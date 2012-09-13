@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2009 Facebook
 #
@@ -29,6 +22,7 @@ import logging
 import urllib
 import re
 
+from tornado.escape import native_str, parse_qs_bytes, utf8
 from tornado.util import b, ObjectDict
 
 
@@ -212,6 +206,31 @@ class HTTPFile(ObjectDict):
     pass
 
 
+def parse_body_arguments(content_type, body, arguments, files):
+    """Parses a form request body.
+
+    Supports "application/x-www-form-urlencoded" and "multipart/form-data".
+    The content_type parameter should be a string and body should be
+    a byte string.  The arguments and files parameters are dictionaries
+    that will be updated with the parsed contents.
+    """
+    if content_type.startswith("application/x-www-form-urlencoded"):
+        uri_arguments = parse_qs_bytes(native_str(body))
+        for name, values in uri_arguments.iteritems():
+            values = [v for v in values if v]
+            if values:
+                arguments.setdefault(name, []).extend(values)
+    elif content_type.startswith("multipart/form-data"):
+        fields = content_type.split(";")
+        for field in fields:
+            k, sep, v = field.strip().partition("=")
+            if k == "boundary" and v:
+                parse_multipart_form_data(utf8(v), body, arguments, files)
+                break
+        else:
+            logging.warning("Invalid multipart/form-data")
+
+
 def parse_multipart_form_data(boundary, data, arguments, files):
     """Parses a multipart/form-data body.
 
@@ -298,4 +317,3 @@ def _parse_header(line):
 def doctests():
     import doctest
     return doctest.DocTestSuite()
-

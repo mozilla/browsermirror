@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2009 Facebook
 #
@@ -356,4 +349,3 @@ def _build_unicode_map():
     return unicode_map
 
 _HTML_UNICODE_MAP = _build_unicode_map()
-

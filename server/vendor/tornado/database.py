@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2009 Facebook
 #
@@ -243,4 +236,3 @@ if MySQLdb is not None:
     # Alias some common MySQL exceptions
     IntegrityError = MySQLdb.IntegrityError
     OperationalError = MySQLdb.OperationalError
-

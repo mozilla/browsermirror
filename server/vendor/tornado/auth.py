@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2009 Facebook
 #
@@ -210,6 +203,9 @@ class OpenIdMixin(object):
             user["locale"] = locale
         if username:
             user["username"] = username
+        claimed_id = self.get_argument("openid.claimed_id", None)
+        if claimed_id:
+            user["claimed_id"] = claimed_id
         callback(user)
 
 
@@ -289,14 +285,16 @@ class OAuthMixin(object):
         consumer_token = self._oauth_consumer_token()
         url = self._OAUTH_REQUEST_TOKEN_URL
         args = dict(
-            oauth_consumer_key=consumer_token["key"],
+            oauth_consumer_key=escape.to_basestring(consumer_token["key"]),
             oauth_signature_method="HMAC-SHA1",
             oauth_timestamp=str(int(time.time())),
-            oauth_nonce=binascii.b2a_hex(uuid.uuid4().bytes),
+            oauth_nonce=escape.to_basestring(binascii.b2a_hex(uuid.uuid4().bytes)),
             oauth_version=getattr(self, "_OAUTH_VERSION", "1.0a"),
         )
         if getattr(self, "_OAUTH_VERSION", "1.0a") == "1.0a":
-            if callback_uri:
+            if callback_uri == "oob":
+                args["oauth_callback"] = "oob"
+            elif callback_uri:
                 args["oauth_callback"] = urlparse.urljoin(
                     self.request.full_url(), callback_uri)
             if extra_params:
@@ -316,7 +314,10 @@ class OAuthMixin(object):
                 base64.b64encode(request_token["secret"]))
         self.set_cookie("_oauth_request_token", data)
         args = dict(oauth_token=request_token["key"])
-        if callback_uri:
+        if callback_uri == "oob":
+            self.finish(authorize_url + "?" + urllib.urlencode(args))
+            return
+        elif callback_uri:
             args["oauth_callback"] = urlparse.urljoin(
                 self.request.full_url(), callback_uri)
         self.redirect(authorize_url + "?" + urllib.urlencode(args))
@@ -325,11 +326,11 @@ class OAuthMixin(object):
         consumer_token = self._oauth_consumer_token()
         url = self._OAUTH_ACCESS_TOKEN_URL
         args = dict(
-            oauth_consumer_key=consumer_token["key"],
-            oauth_token=request_token["key"],
+            oauth_consumer_key=escape.to_basestring(consumer_token["key"]),
+            oauth_token=escape.to_basestring(request_token["key"]),
             oauth_signature_method="HMAC-SHA1",
             oauth_timestamp=str(int(time.time())),
-            oauth_nonce=binascii.b2a_hex(uuid.uuid4().bytes),
+            oauth_nonce=escape.to_basestring(binascii.b2a_hex(uuid.uuid4().bytes)),
             oauth_version=getattr(self, "_OAUTH_VERSION", "1.0a"),
         )
         if "verifier" in request_token:
@@ -374,11 +375,11 @@ class OAuthMixin(object):
         """
         consumer_token = self._oauth_consumer_token()
         base_args = dict(
-            oauth_consumer_key=consumer_token["key"],
-            oauth_token=access_token["key"],
+            oauth_consumer_key=escape.to_basestring(consumer_token["key"]),
+            oauth_token=escape.to_basestring(access_token["key"]),
             oauth_signature_method="HMAC-SHA1",
             oauth_timestamp=str(int(time.time())),
-            oauth_nonce=binascii.b2a_hex(uuid.uuid4().bytes),
+            oauth_nonce=escape.to_basestring(binascii.b2a_hex(uuid.uuid4().bytes)),
             oauth_version=getattr(self, "_OAUTH_VERSION", "1.0a"),
         )
         args = {}
@@ -861,7 +862,7 @@ class FacebookMixin(object):
                 self._on_get_user_info, callback, session),
             session_key=session["session_key"],
             uids=session["uid"],
-            fields="uid,first_name,last_name,name,locale,pic_square," \
+            fields="uid,first_name,last_name,name,locale,pic_square,"
                    "profile_url,username")
 
     def facebook_request(self, method, callback, **args):
@@ -1158,4 +1159,3 @@ def _oauth_parse_response(body):
     special = (b("oauth_token"), b("oauth_token_secret"))
     token.update((k, p[k][0]) for k in p if k not in special)
     return token
-

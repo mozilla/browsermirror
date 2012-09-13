@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 #
 # Copyright 2009 Facebook
 #
@@ -560,6 +553,8 @@ class _KQueue(object):
         self._kqueue.close()
 
     def register(self, fd, events):
+        if fd in self._active:
+            raise IOError("fd %d already registered" % fd)
         self._control(fd, events, select.KQ_EV_ADD)
         self._active[fd] = events
 
@@ -621,6 +616,8 @@ class _Select(object):
         pass
 
     def register(self, fd, events):
+        if fd in self.read_fds or fd in self.write_fds or fd in self.error_fds:
+            raise IOError("fd %d already registered" % fd)
         if events & IOLoop.READ:
             self.read_fds.add(fd)
         if events & IOLoop.WRITE:
@@ -673,4 +670,3 @@ else:
         if "linux" in sys.platform:
             logging.warning("epoll module not found; using select()")
         _poll = _Select
-

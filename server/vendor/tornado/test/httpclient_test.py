@@ -1,11 +1,4 @@
 #!/usr/bin/env python
-import os, site
-here = os.path.dirname(os.path.abspath(__file__))
-site.addsitedir(os.path.join(here, 'vendor'))
-site.addsitedir(os.path.join(here, 'vendor-binary'))
-
-## Here is the normal script:
-
 
 from __future__ import absolute_import, division, with_statement
 
@@ -67,10 +60,6 @@ class EchoPostHandler(RequestHandler):
 
 
 class HTTPClientCommonTestCase(AsyncHTTPTestCase, LogTrapTestCase):
-    def get_http_client(self):
-        """Returns AsyncHTTPClient instance.  May be overridden in subclass."""
-        return AsyncHTTPClient(io_loop=self.io_loop)
-
     def get_app(self):
         return Application([
             url("/hello", HelloWorldHandler),
@@ -80,11 +69,6 @@ class HTTPClientCommonTestCase(AsyncHTTPTestCase, LogTrapTestCase):
             url("/countdown/([0-9]+)", CountdownHandler, name="countdown"),
             url("/echopost", EchoPostHandler),
             ], gzip=True)
-
-    def setUp(self):
-        super(HTTPClientCommonTestCase, self).setUp()
-        # replace the client defined in the parent class
-        self.http_client = self.get_http_client()
 
     def test_hello_world(self):
         response = self.fetch("/hello")
@@ -205,4 +189,3 @@ Transfer-Encoding: chunked
         self.assertEqual(type(response.headers["Content-Type"]), str)
         self.assertEqual(type(response.code), int)
         self.assertEqual(type(response.effective_url), str)
-
