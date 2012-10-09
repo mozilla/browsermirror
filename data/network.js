@@ -10,6 +10,7 @@ function Connection(address, isMaster) {
   this.socket = null;
   this.xhrSince = 0;
   this.isMaster = isMaster;
+  console.log('Created Connection');
   this.setupConnection();
 }
 
@@ -18,7 +19,15 @@ Connection.prototype = {
   POLL_TIME: 5000,
 
   setupConnection: function () {
-    if (typeof WebSocket != "undefined") {
+    if (typeof ProxySocket != "undefined") {
+      this.socket = new ProxySocket(this.address);
+      this.socket.onopen = (function () {
+        this.flush();
+      }).bind(this);
+      this.socket.onmessage = (function (event) {
+        this.ondata([JSON.parse(event.data)]);
+      }).bind(this);
+    } else if (typeof WebSocket != "undefined") {
       log(INFO, 'Setup WebSocket connection to', this.address);
       // Note, this seems to fail when the page is an https page
       // (perhaps when the websocket is ws:, not wss:)
@@ -26,13 +35,14 @@ Connection.prototype = {
       // FIXME: we'd like to change the Origin of the WebSocket, using
       // magical high-permission powers, but as it stands currently
       // the Origin will be the current page.
+      console.log('Setting up new connection to', this.address);
       this.socket = new WebSocket(this.address);
       this.socket.onopen = (function () {
         console.log('WebSocket connection initiated.');
         this.flush();
       }).bind(this);
       this.socket.onmessage = (function (event) {
-        this.ondata([JSON.parse(event.code)]);
+        this.ondata([JSON.parse(event.data)]);
       }).bind(this);
       this.socket.onerror = (function (event) {
         console.log('WebSocket error:', event.data);
@@ -58,6 +68,10 @@ Connection.prototype = {
   },
 
   send: function (data) {
+    if (data === undefined) {
+      throw 'You cannot send undefined';
+    }
+    console.log('Sending:', JSON.stringify(data).substr(0, 40));
     this.queue.push(data);
     this.flush();
   },
