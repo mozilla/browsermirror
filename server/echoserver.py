@@ -29,7 +29,6 @@ class Queue(object):
 
     def send_message(self, message, from_socket=None):
         for socket in self.sockets:
-            print 'sending message to', socket, from_socket
             if from_socket and from_socket is socket:
                 continue
             socket.write_message(message)
@@ -60,10 +59,10 @@ class EchoWebSocket(WebSocketHandler):
     def open(self, id):
         self.queue = Queue.get(id)
         self.queue.add_socket(self)
-        print "WebSocket opened: %s" % self.queue.id
+        print "WebSocket opened: %s (origin: %s)" % (self.queue.id, self.request.headers.get('origin'))
 
     def on_message(self, message):
-        print 'got message', message
+        print 'got message (%s): %s' % (self.queue.id, message)
         self.queue.send_message(message, self)
 
     def on_close(self):
