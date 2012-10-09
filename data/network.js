@@ -71,7 +71,7 @@ Connection.prototype = {
     if (data === undefined) {
       throw 'You cannot send undefined';
     }
-    console.log('Sending:', JSON.stringify(data).substr(0, 40));
+    console.log('Sending:', JSON.stringify(data).substr(0, 40), JSON.stringify(data).length);
     this.queue.push(data);
     this.flush();
   },
@@ -92,7 +92,9 @@ Connection.prototype = {
       this.postXhr();
     } else if (this.socket.readyState == this.socket.OPEN) {
       for (var i=0; i<this.queue.length; i++) {
-        this.socket.send(JSON.stringify(this.queue[i]));
+        var data = this.queue[i];
+        data = JSON.stringify(data);
+        this.socket.send(data);
       }
       this.queue = [];
     }
