@@ -7,6 +7,8 @@ if (location.href.toLowerCase().indexOf('https') == 0) {
 }
 address += '://' + location.host + '/hub' + hub;
 
+//address = 'wss://browsermirror.ianbicking.org/hub' + hub;
+
 connection = new Connection(address, false);
 var mirror = new Mirror(connection);
 connection.ondata = function (datas) {
