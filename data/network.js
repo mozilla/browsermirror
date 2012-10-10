@@ -20,6 +20,7 @@ Connection.prototype = {
 
   setupConnection: function () {
     if (typeof ProxySocket != "undefined") {
+      console.log('Using ProxySocket for connection to', this.address);
       this.socket = new ProxySocket(this.address);
       this.socket.onopen = (function () {
         this.flush();

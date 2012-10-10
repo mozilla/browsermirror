@@ -2,8 +2,19 @@
 
 function startProxier() {
   var socket = null;
+  var socketUrl = null;
   var closing = false;
   function setupConnection(address, autoReconnect) {
+    if (socketUrl && socketUrl == address) {
+      // Already connected, no need to reconnect
+      console.log('Reusing connection to', socketUrl);
+      self.port.emit("eventOpened");
+      return;
+    }
+    socketUrl = address;
+    if (socket) {
+      socket.close();
+    }
     if (autoReconnect === undefined) {
       autoReconnect = true;
     }
