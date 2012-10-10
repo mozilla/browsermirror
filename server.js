@@ -26,18 +26,20 @@ var server = http.createServer(function(request, response) {
 });
 
 function startServer(port) {
-  server.listen(port, function() {
+  server.listen(port, '0.0.0.0', function() {
     console.log((new Date()) + ' Server is listening on port 8080');
   });
 }
 
 var wsServer = new WebSocketServer({
     httpServer: server,
-    // You should not use autoAcceptConnections for production
-    // applications, as it defeats all standard cross-origin protection
-    // facilities built into the protocol and the browser.  You should
-    // *always* verify the connection's origin and decide whether or not
-    // to accept it.
+    // 10Mb max size (1Mb is default, maybe unnecessary)
+    maxReceivedMessageSize: 0x1000000,
+    // The browser doesn't seem to break things up into frames (not sure what this means)
+    // and the default of 64Kb was exceeded; raised to 1Mb
+    maxReceivedFrameSize: 0x100000,
+    // Using autoaccept because the origin is somewhat dynamic
+    // (but maybe is not anymore)
     autoAcceptConnections: false
 });
 
