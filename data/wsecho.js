@@ -49,7 +49,13 @@ function startProxier() {
     socket = null;
   });
   self.port.on("sendData", function (data) {
-    socket.send(data);
+    try {
+      socket.send(data);
+    } catch (e) {
+      console.log('ERROR in socket.send', e);
+      console.log('Socket:', socket, socket && socket.bufferedAmount);
+      throw e;
+    }
   });
 }
 
