@@ -21,7 +21,6 @@ self.port.on("StartShare", function () {
     }
     if (data.supportsWebRTC && supportsWebRTC()) {
       self.port.emit("SupportsWebRTC");
-      return;
     }
     if (data.hello) {
       channel.send({helloBack: true, isMaster: true, supportsWebRTC: supportsWebRTC()});

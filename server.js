@@ -52,6 +52,8 @@ function originIsAllowed(origin) {
 
 var allConnections = {};
 
+var ID = 0;
+
 wsServer.on('request', function(request) {
   if (!originIsAllowed(request.origin)) {
     // Make sure we only accept requests from an allowed origin
@@ -64,19 +66,23 @@ wsServer.on('request', function(request) {
 
   // FIXME: we should use a protocol here instead of null, but I can't get it to work
   var connection = request.accept(null, request.origin);
+  connection.ID = ID++;
   if (! allConnections[id]) {
     allConnections[id] = [];
   }
   allConnections[id].push(connection);
-  console.log((new Date()) + ' Connection accepted to ' + JSON.stringify(id));
+  console.log((new Date()) + ' Connection accepted to ' + JSON.stringify(id) + ' ID:' + connection.ID);
   connection.on('message', function(message) {
     console.log('Message on ' + id + ' bytes: '
-                + (message.utf8Data && message.utf8Data.length));
+                + (message.utf8Data && message.utf8Data.length)
+                + ' conn ID: ' + connection.ID + ' data:' + message.utf8Data.substr(0, 20));
     for (var i=0; i<allConnections[id].length; i++) {
       var c = allConnections[id][i];
       if (c == connection) {
+        console.log('Skipping to ' + c.ID);
         continue;
       }
+      console.log('Sending to ' + c.ID);
       if (message.type === 'utf8') {
         c.sendUTF(message.utf8Data);
       } else if (message.type === 'binary') {

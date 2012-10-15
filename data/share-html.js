@@ -1,7 +1,7 @@
 var connection = null;
 
 var hub = location.pathname.replace(/\/*$/, '');
-var address = location.protocol + "://" + location.host + "/hub" + hub;
+var address = location.protocol + "//" + location.host + "/hub" + hub;
 var channel = new WebSocketChannel(address);
 var outgoing = new PostMessageChannel(null);
 outgoing.rawdata = true;
@@ -11,6 +11,7 @@ outgoing.onmessage = function (data) {
 
 channel.send({hello: true, isMaster: false, supportsWebRTC: supportsWebRTC()});
 channel.onmessage = function (data) {
+  //console.log('incoming message', data);
   if (data.chatMessages) {
     for (var i=0; i<data.chatMessages.length; i++) {
       displayMessage(data.chatMessages[i], false);
@@ -33,9 +34,6 @@ channel.onmessage = function (data) {
       document.getElementById('audio-chat').innerHTML = 'chatting!';
     }, pc, data.rtcAnswer);
     return;
-  }
-  if (data.supportsWebRTC !== undefined) {
-    console.warn("Got supports:", data.supportsWebRTC);
   }
   if (data.hello) {
     channel.send({helloBack: true, isMaster: false, supportsWebRTC: supportsWebRTC()});

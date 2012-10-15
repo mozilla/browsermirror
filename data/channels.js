@@ -99,7 +99,12 @@ AbstractChannel.prototype = {
 
   _incoming: function (data) {
     if (! this.rawdata) {
-      data = JSON.parse(data);
+      try {
+        data = JSON.parse(data);
+      } catch (e) {
+        console.error("Got invalid JSON data:", data.substr(0, 40));
+        throw e;
+      }
     }
     if (this.onmessage) {
       this.onmessage(data);
@@ -118,6 +123,19 @@ var WebSocketChannel = AbstractChannel.subclass({
     this.address = address;
     this.socket = null;
     this._reopening = false;
+  },
+
+  toString: function () {
+    var s = '[WebSocketChannel to ' + this.address;
+    if (! this.socket) {
+      s += ' (socket unopened)';
+    } else {
+      s += ' readyState: ' + this.socket.readyState;
+    }
+    if (this.closed) {
+      s += ' CLOSED';
+    }
+    return s + ']';
   },
 
   close: function () {
@@ -152,10 +170,10 @@ var WebSocketChannel = AbstractChannel.subclass({
       }
       this._reopening = false;
     }).bind(this);
-    this.socket.onclose = (function () {
+    this.socket.onclose = (function (event) {
       this.socket = null;
-      console.log('WebSocket close', event.wasClean ? 'clean' : 'unclean',
-                  'code:', event.code, 'reason:', event.reason || 'none');
+      console.error('WebSocket close', event.wasClean ? 'clean' : 'unclean',
+                    'code:', event.code, 'reason:', event.reason || 'none');
       if (! this.closed) {
         this._reopening = true;
         this._setupConnection();
@@ -165,7 +183,7 @@ var WebSocketChannel = AbstractChannel.subclass({
       this._incoming(event.data);
     }).bind(this);
     this.socket.onerror = (function (event) {
-      console.log('WebSocket error:', event.data);
+      console.error('WebSocket error:', event.data);
     }).bind(this);
   }
 
@@ -185,12 +203,30 @@ var PostMessageChannel = AbstractChannel.subclass({
     }
   },
 
+  toString: function () {
+    var s = '[PostMessageChannel';
+    if (this.window) {
+      s += ' to window ' + this.window;
+    } else {
+      s += ' not bound to a window';
+    }
+    if (this.window && ! this._pingReceived) {
+      s += ' still establishing';
+    }
+    return s + ']';
+  },
+
   bindWindow: function (win, noSetup) {
+    if (this.window) {
+      this.close();
+    }
     if (win && win.contentWindow) {
       win = win.contentWindow;
     }
     this.window = win;
-    this.window.addEventListener("message", this._receiveMessage, false);
+    // FIXME: The distinction between this.window and window seems unimportant
+    // in the case of postMessage
+    window.addEventListener("message", this._receiveMessage, false);
     if (! noSetup) {
       this._setupConnection();
     }
@@ -217,6 +253,9 @@ var PostMessageChannel = AbstractChannel.subclass({
   },
 
   _receiveMessage: function (event) {
+    if (event.source !== this.window) {
+      return;
+    }
     if (this.expectedOrigin && event.origin != this.expectedOrigin) {
       console.info("Expected message from", this.expectedOrigin,
                    "but got message from", event.origin);
@@ -242,7 +281,7 @@ var PostMessageChannel = AbstractChannel.subclass({
 
   close: function () {
     this.closed = true;
-    this.window.removeEventListener("message", this._receiveMessage, false);
+    window.removeEventListener("message", this._receiveMessage, false);
     if (this.onclose) {
       this.onclose();
     }
@@ -263,6 +302,16 @@ var PostMessageIncomingChannel = AbstractChannel.subclass({
     this.expectedOrigin = expectedOrigin;
     this._receiveMessage = this._receiveMessage.bind(this);
     window.addEventListener("message", this._receiveMessage, false);
+  },
+
+  toString: function () {
+    var s = '[PostMessageIncomingChannel';
+    if (this.source) {
+      s += ' bound to source ' + s;
+    } else {
+      s += ' awaiting source';
+    }
+    return s + ']';
   },
 
   _send: function (data) {
@@ -319,6 +368,17 @@ var PortProxyChannel = AbstractChannel.subclass({
     this.self = self_ || self;
     this._incoming = this._incoming.bind(this);
     this._remoteOpened = this._remoteOpened.bind(this);
+  },
+
+  toString: function () {
+    var s = '[PortProxyChannel';
+    if (this.self !== self) {
+      s += ' bound to self ' + this.self;
+    }
+    if (this.prefix) {
+      s += ' with prefix "' + this.prefix + '"';
+    }
+    return s + ']';
   },
 
   _setupConnection: function () {
@@ -383,7 +443,9 @@ function PortIncomingChannel(channel, prefix, self_) {
     // FIXME: call remoteClose?
     self_.port.emit(prefix + "Closed");
   };
-  return remoteClose;
+  return {
+    close: remoteClose
+  };
 }
 
 /* Echos all the connection proxying from from_ (the worker that wants

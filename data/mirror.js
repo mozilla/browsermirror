@@ -400,12 +400,9 @@ Master.prototype.processCommand = function (event) {
   }
   if (event.hello) {
     // Make sure to send the doc again:
-    if (event.supportsWebRTC && supportsWebRTC()) {
-      this.send({supportsWebRTC: true});
-    }
     if (event.isMaster) {
       alert('Two computers are sending updates, everything will break!\n' +
-            'The other computer is at: ' + event.href);
+            'The other computer is at: ' + (event.href || 'unknown'));
     }
     this.lastSentDoc = null;
     this.lastSentMessage = null;
