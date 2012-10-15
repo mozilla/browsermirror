@@ -9,7 +9,7 @@ function Base () {
   } else {
     this.document = unsafeWindow.document;
   }
-};
+}
 
 Base.prototype.send = function (msg) {
   /* Sends a message to the server */
@@ -56,10 +56,10 @@ Base.prototype.showScreen = function (alsoScroll) {
   if ((! this.lastScreen) || this.lastScreen.element) {
     return;
   }
-  var top = getElementPosition(this.getElement(this.lastScreen.start)).top
-            + this.lastScreen.startOffsetTop;
-  var bottom = getElementPosition(this.getElement(this.lastScreen.end)).top
-               + this.lastScreen.endOffsetTop;
+  var top = getElementPosition(this.getElement(this.lastScreen.start)).top +
+            this.lastScreen.startOffsetTop;
+  var bottom = getElementPosition(this.getElement(this.lastScreen.end)).top +
+               this.lastScreen.endOffsetTop;
   this.lastScreen.element = createVisualFrame(top, bottom);
   if (alsoScroll) {
     if (bottom-top < window.innerHeight) {
@@ -101,7 +101,7 @@ Base.prototype.temporaryHighlight = function (el, offsetTop, offsetLeft, mode) {
       this.document.body.removeChild(circle);
       circle = null;
     }
-  };
+  }
   setTimeout(canceller.bind(this), TEMPORARY_HIGHLIGHT_DELAY);
   if (mode != 'redisplay') {
     var message = this.document.createElement('div');
@@ -152,10 +152,10 @@ Base.prototype.updateScreenArrow = function () {
   if ((! this.lastScreen) || (! this.lastScreen.start)) {
     return;
   }
-  var top = getElementPosition(this.getElement(this.lastScreen.start)).top
-            + this.lastScreen.startOffsetTop;
-  var bottom = getElementPosition(this.getElement(this.lastScreen.end)).top
-               + this.lastScreen.endOffsetTop;
+  var top = getElementPosition(this.getElement(this.lastScreen.start)).top +
+            this.lastScreen.startOffsetTop;
+  var bottom = getElementPosition(this.getElement(this.lastScreen.end)).top +
+               this.lastScreen.endOffsetTop;
   var myTop = window.pageYOffset;
   var myBottom = window.pageYOffset + window.innerHeight;
   var myHeight = window.innerHeight;
@@ -178,7 +178,7 @@ Base.prototype.updateScreenArrow = function () {
     }
   }
   var el = this.document.getElementById('jsmirror-view');
-  if (el.status !== arrow) {
+  if (el && el.status !== arrow) {
     el.status = arrow;
     el.innerHTML = arrow;
   }
@@ -359,7 +359,8 @@ Master.prototype.reconnect = function () {
 };
 
 Master.prototype.processCommand = function (event) {
-  log(DEBUG, 'got', typeof event, event, !!event.chatMessages);
+  //log(DEBUG, 'got', typeof event, event, !!event.chatMessages);
+  log(DEBUG, 'got', JSON.stringify(event).substr(0, 40));
   if (event.event) {
     var realEvent = this.deserializeEvent(event.event);
     log(WARN, 'got event', event.event.type, event.event.target, realEvent.target);
@@ -399,9 +400,12 @@ Master.prototype.processCommand = function (event) {
   }
   if (event.hello) {
     // Make sure to send the doc again:
+    if (event.supportsWebRTC && supportsWebRTC()) {
+      this.send({supportsWebRTC: true});
+    }
     if (event.isMaster) {
-      alert('Two computers are sending updates, everything will break!\n'
-            + 'The other computer is at: ' + event.href);
+      alert('Two computers are sending updates, everything will break!\n' +
+            'The other computer is at: ' + event.href);
     }
     this.lastSentDoc = null;
     this.lastSentMessage = null;
@@ -674,10 +678,10 @@ Master.prototype.skipElement = function (el) {
   // Note elements with children might have children with, e.g., absolute
   // positioning -- so they might not make the parent have any width, but
   // may still need to be displayed.
-  if ((el.style && el.style.display == 'none')
-      || ((el.clientWidth === 0 && el.clientHeight === 0) &&
-          (! this.skipElementsOKEmpty[tag]) &&
-          (! el.childNodes.length))) {
+  if ((el.style && el.style.display == 'none') ||
+      ((el.clientWidth === 0 && el.clientHeight === 0) &&
+       (! this.skipElementsOKEmpty[tag]) &&
+       (! el.childNodes.length))) {
     return true;
   }
   return false;
@@ -761,6 +765,11 @@ Master.prototype.serializeAttributes = function (el) {
   return attrs;
 };
 
+Master.prototype.serializeToHtml = function (el) {
+  /* Serializes a document to static HTML (not a JSON structure).  For use with iframes */
+  // FIXME: create
+};
+
 Master.prototype.diffDocuments = function (orig, current, commands, logit) {
   var logitOrig = logit;
   if (typeof logit == 'string') {
@@ -809,8 +818,8 @@ Master.prototype.diffDocuments = function (orig, current, commands, logit) {
   var curChildren = this.normalChildren(current);
   var curLength = curChildren.length;
   var origLength = origChildren.length;
-  if (curLength === 1 && origLength === 1
-      && typeof curChildren[0] === 'string' && typeof origChildren[0] === 'string') {
+  if (curLength === 1 && origLength === 1 &&
+      typeof curChildren[0] === 'string' && typeof origChildren[0] === 'string') {
     // A special case of an element that only has a single string child
     if (origChildren[0] !== curChildren[0]) {
       commands.push(['replace_text', current.jsmirrorId, curChildren[0]]);
@@ -1008,7 +1017,7 @@ Master.prototype.queryHref = function (href) {
   var div = this.document.createElement('div');
   div.style.position = 'fixed';
   div.style.zIndex = '10002';
-  div.style.top = parseInt((window.innerHeight - 50)/2) + 'px';
+  div.style.top = parseInt((window.innerHeight - 50)/2, 10) + 'px';
   div.style.height = '100px';
   div.style.left = '50px';
   div.style.width = (window.innerWidth - 200) + 'px';
@@ -1019,10 +1028,10 @@ Master.prototype.queryHref = function (href) {
   div.style.border = '2px solid #999';
   div.jsmirrorHide = true;
   // FIXME: quote href
-  div.innerHTML = 'The other person has clicked on a link.  That link will take you to:<br>'
-    + '<a style="margin-left: 1em; color: #99f; text-decoration: underline" href="' + href + '" target="_blank">' + href + '</a><br>'
-    + 'Do you want to go? <button id="jsmirror-yes">Go!</button>  <button id="jsmirror-no">Cancel</button><br>'
-    + 'Note: you must re-activate the bookmarklet once you get to the new page!';
+  div.innerHTML = 'The other person has clicked on a link.  That link will take you to:<br>' +
+    '<a style="margin-left: 1em; color: #99f; text-decoration: underline" href="' + href + '" target="_blank">' + href + '</a><br>' +
+    'Do you want to go? <button id="jsmirror-yes">Go!</button>  <button id="jsmirror-no">Cancel</button><br>' +
+    'Note: you must re-activate the bookmarklet once you get to the new page!';
   this.document.body.appendChild(div);
   var yes = this.document.getElementById('jsmirror-yes');
   var no = this.document.getElementById('jsmirror-no');
@@ -1032,7 +1041,7 @@ Master.prototype.queryHref = function (href) {
     this.document.removeEventListener('click', maybeCancel, true);
     self.sendChat(["The other person cancelled your attempt to visit " + href]);
     self.queryHrefCancel = null;
-  };
+  }
   function maybeCancel(event) {
     if (event.target == yes) {
       location.href = href;
@@ -1103,12 +1112,11 @@ Mirror.prototype.processCommand = function (event) {
   }
   if (event.hello && event.isMaster) {
     var waitingEl = this.document.getElementById('jsmirror-waiting');
-    console.log('hellod', waitingEl, href, event.isMaster);
     if (waitingEl) {
       waitingEl.innerHTML = 'Connected, receiving document...';
     }
     // Since we need the page right away, we'll ask for it:
-    this.send({hello: true});
+    this.send({hello: true, supportsWebRTC: supportsWebRTC()});
   }
   if (event.doc) {
     this.setDoc(event.doc);
@@ -1384,11 +1392,12 @@ Mirror.prototype.deserializeElement = function (data) {
   var attrs = data[2];
   var children = data[3];
   var el;
+  var text;
   if (tagName == '<!--COMMENT-->') {
     if (children && children.length) {
-      var text = children[0];
+      text = children[0];
     } else {
-      var text = "";
+      text = "";
     }
     el = this.document.createComment(text);
     el.jsmirrorId = jsmirrorId;
@@ -1416,12 +1425,13 @@ Mirror.prototype.deserializeElement = function (data) {
     }
   }
   el.jsmirrorId = jsmirrorId;
-  if ((tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT' || tagName == 'OPTION')
-      && el.id != 'jsmirror-input') {
+  if ((tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT' || tagName == 'OPTION') &&
+      el.id != 'jsmirror-input') {
+    var eventType;
     if (tagName == 'TEXTAREA' || (tagName == 'INPUT' && tagName.type && tagName.type.toLowerCase() == 'text')) {
-      var eventType = 'keyup';
+      eventType = 'keyup';
     } else {
-      var eventType = 'change';
+      eventType = 'change';
     }
     el.addEventListener(eventType, this._boundChangeEvent, false);
   }
@@ -1463,7 +1473,7 @@ Mirror.prototype.applyDiff = function (commands) {
           el.removeChild(lastEl);
         }
       } else {
-        log(WARN, "Tried to delete_last_text of element with no children", command, lastEl);
+        log(WARN, "Tried to delete_last_text of element with no children", command);
         continue;
       }
     }
@@ -1480,10 +1490,11 @@ Mirror.prototype.applyDiff = function (commands) {
     if (name === 'insert_before') {
       var pushes = command[2];
       for (var j=pushes.length-1; j>=0; j--) {
+        var child;
         if (typeof pushes[j] == 'string') {
-          var child = this.document.createTextNode(pushes[j]);
+          child = this.document.createTextNode(pushes[j]);
         } else {
-          var child = this.deserializeElement(pushes[j]);
+          child = this.deserializeElement(pushes[j]);
         }
         el.parentNode.insertBefore(child, el);
       }
@@ -1491,10 +1502,11 @@ Mirror.prototype.applyDiff = function (commands) {
     if (name === 'append_to') {
       var pushes = command[2];
       for (var j=0; j<pushes.length; j++) {
+        var child;
         if (typeof pushes[j] == 'string') {
-          var child = this.document.createTextNode(pushes[j]);
+          child = this.document.createTextNode(pushes[j]);
         } else {
-          var child = this.deserializeElement(pushes[j]);
+          child = this.deserializeElement(pushes[j]);
         }
         el.appendChild(child);
       }
@@ -1632,12 +1644,13 @@ function Panel(controller, isMaster) {
   var self = this;
   this._boundHighlightListener = this.highlightListener.bind(this);
   this.document = controller.document;
+  /*
   if (! this.document.body) {
     // We have to defer the actual creation
     window.addEventListener('load', this.initPanel.bind(this), false);
   } else {
     this.initPanel();
-  }
+  }*/
 }
 
 Panel.prototype.initPanel = function () {
@@ -1651,17 +1664,17 @@ Panel.prototype.initPanel = function () {
   this.box.style.width = this.width;
   this.box.style.zIndex = '10001';
   // Note: if you change anything here, be sure to change the example in homepage.html too
-  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #444; border: 2px solid #999; color: #fff; padding: 3px; border-radius: 3px; text-align: left">'
-    + '<div style="position: relative; float: right; display: inline">'
-    + '<span id="jsmirror-view" style="border: 1px outset #999; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>'
-    + '<span id="jsmirror-highlight" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>'
-    + '<span id="jsmirror-hide" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center">&#215;</span>'
-    + '</div>'
-    + '<div id="jsmirror-container">'
-    + (this.isMaster ? '<div><span id="jsmirror-share-text" style="display: none"><label for="jsmirror-share-field">copy this link:</label></span><input type="text" id="jsmirror-share-field" value="' + this.controller.connection.shareUrl + '" style="padding: 0; margin: 0; border: 1px solid #000; width: 8em; display: none"><a id="jsmirror-share-url" title="Give this link to a friend to let them view your session" href="' + this.controller.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '')
-    + 'Chat:<div id="jsmirror-chat"></div>'
-    + '<input type="text" id="jsmirror-input" style="width: 100%; font-size: 10px; background-color: #999; color: #000; border: 1px solid #000;">'
-    + '</div>';
+  this.box.innerHTML = '<div style="font-family: sans-serif; font-size: 10px; background-color: #444; border: 2px solid #999; color: #fff; padding: 3px; border-radius: 3px; text-align: left">' +
+    '<div style="position: relative; float: right; display: inline">' +
+    '<span id="jsmirror-view" style="border: 1px outset #999; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #0f0;" title="Turn this on to show where the remote user is scrolled to">&#8597;</span>' +
+    '<span id="jsmirror-highlight" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center; color: #f00; font-weight: bold;" title="Press this button and click on the page to highlight a position on the page">&#10132;</span>' +
+    '<span id="jsmirror-hide" style="border: 1px outset #999; margin-left: 1px; cursor: pointer; display: inline-block; width: 1em; text-align: center">&#215;</span>' +
+    '</div>' +
+    '<div id="jsmirror-container">' +
+    (this.isMaster ? '<div><span id="jsmirror-share-text" style="display: none"><label for="jsmirror-share-field">copy this link:</label></span><input type="text" id="jsmirror-share-field" value="' + this.controller.connection.shareUrl + '" style="padding: 0; margin: 0; border: 1px solid #000; width: 8em; display: none"><a id="jsmirror-share-url" title="Give this link to a friend to let them view your session" href="' + this.controller.shareUrl + '" style="text-decoration: underline; color: #99f;">share</a></div>' : '') +
+    'Chat:<div id="jsmirror-chat"></div>' +
+    '<input type="text" id="jsmirror-input" style="width: 100%; font-size: 10px; background-color: #999; color: #000; border: 1px solid #000;">' +
+    '</div>';
   this.document.body.appendChild(this.box);
   var hideContainer = this.document.getElementById('jsmirror-container');
   var hideButton = this.document.getElementById('jsmirror-hide');
@@ -1817,7 +1830,7 @@ Panel.prototype.displayMessage = function (message, here) {
 function MockPanel(controller, isMaster) {
   this.controller = controller;
   this.isMaster = isMaster;
-};
+}
 
 MockPanel.prototype = {
 
@@ -1891,10 +1904,11 @@ function doOnLoad(func) {
 function getScreenRange(document) {
   /* Returns {start, end} where these elements are the closest ones
      to the top and bottom of the currently-visible screen. */
+  var win;
   if (typeof unsafeWindow == "undefined") {
-    var win = window;
+    win = window;
   } else {
-    var win = unsafeWindow;
+    win = unsafeWindow;
   }
   var start = win.pageYOffset;
   var end = start + win.innerHeight;
@@ -1997,6 +2011,132 @@ function iterNodes(start) {
   };
 }
 
+function messageFromJson(data, permissive) {
+  var messageClass = Message[data.type];
+  var message = new messageClass(data, permissive);
+}
+
+var Message = {};
+
+function v_bool(name, value, permissive) {
+  if ((! permissive) && value === undefined) {
+    throw 'Message ' + name + ' must be defined as a bool';
+  }
+  return !!value;
+}
+
+function v_id(name, value, permissive) {
+  if ((! permissive) && (value === undefined || typeof value != "string")) {
+    // FIXME: could also test the content of the string
+    throw 'Message ' + name + ' must be defined as a bool';
+  }
+}
+
+function v_number(name, value, permissive) {
+  if ((! permissive) && typeof value != "number") {
+    throw 'Message ' + name + ' must be a number';
+  }
+}
+
+function v_list(subValidator) {
+  return function v_lister(name, value, permissive) {
+    if ((! permissive) && value === undefined) {
+      throw 'Message ' + name + ' must be defined';
+    }
+    if (typeof value != "object" || typeof value.length != "number") {
+      throw 'Message ' + name + ' must be an array';
+    }
+    if (subValidator) {
+      for (var i=0; i<value.length; i++) {
+        var n = name + '[' + i + ']';
+        value[i] = subValidator(n, value[i], permissive);
+      }
+    }
+    return value;
+  };
+}
+
+Message.prototype = {
+  bind: function (data, permissive, spec) {
+    for (var name in spec) {
+      if (! spec.hasOwnProperty(name)) {
+        continue;
+      }
+      var value = spec[name](this.type + '.' + name, data[name], permissive);
+      this[name] = value;
+    }
+    if (! permissive) {
+      for (name in data) {
+        if (name != "type" && data.hasOwnProperty(name) && (! spec.hasOwnProperty(name))) {
+          throw 'Message ' + this.type + ' property ' + name + ' not expected';
+        }
+      }
+    }
+  }
+};
+
+Message.hello = function (data, permissive) {
+  this.type = 'hello';
+  this.bind(data, permissive, {
+    isMaster: v_bool
+  });
+};
+
+Message.hello.prototype = Message.prototype;
+Message.hello.prototype.toJson = function () {
+  return {type: this.type, isMaster: !!this.isMaster};
+};
+
+Message.chat = function (data, permissive) {
+  this.type = "chat";
+  this.bind(data, permissive, {
+    messages: v_list(v_string)
+  });
+};
+
+Message.chat.prototype = Message.prototype;
+Message.chat.toJson = function () {
+  return {type: this.type, messages: this.messages};
+};
+
+Message.highlight = function (data, permissive) {
+  this.type = "highlight";
+  this.bind(data, permissive, {
+    target: v_id,
+    offsetTop: v_number,
+    offsetLeft: v_number
+  });
+};
+
+Message.highlight.prototype = Message.prototype;
+Message.highlight.toJson = function () {
+  return {
+    type: this.type,
+    target: this.target,
+    offsetTop: this.offsetTop,
+    offsetLeft: this.offsetLeft
+  };
+};
+
+Message.document = function (data, permissive) {
+  this.type = "document";
+  this.bind(data, permissive, {
+    href: v_url
+  });
+};
+
+Message.document.prototype = Message.prototype;
+Message.document.prototype.toJson = function () {
+  return {type: this.type, href: this.href};
+};
+
+Message.updates = function (data, permissive) {
+  this.type = "updates";
+  this.bind(data, permissive, {
+    updates: v_list(v_element)
+  });
+};
+
 function makeSessionToken() {
   var name = window.name;
   var match = (/^view-([a-zA-Z0-9]+)$/).exec(name || '');
@@ -2008,7 +2148,7 @@ function makeSessionToken() {
   return token;
 }
 
-TOKEN_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+var TOKEN_CHARS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 
 function generateToken() {
   var s = '';
@@ -2040,42 +2180,6 @@ function makeId() {
 }
 // This makes it more sortable:
 makeId.counter=1000;
-
-VERBOSE = 10; DEBUG = 20; INFO = 30; NOTIFY = 40; WARN = ERROR = 50; CRITICAL = 60;
-LOG_LEVEL = DEBUG;
-
-function log(level) {
-  if (level > WARN && console.trace) {
-    console.trace();
-  }
-  if (typeof console == 'undefined') {
-    return;
-  }
-  if (level < LOG_LEVEL) {
-    return;
-  }
-  var args = [];
-  for (var i=1; i<arguments.length; i++) {
-    args.push(arguments[i]);
-  }
-  var method = 'log';
-  if (level >= ERROR && console.error) {
-    method = 'error';
-  } else if (level >= INFO && console.info) {
-    method = 'info';
-  } else if (console.debug) {
-    method = 'debug';
-  }
-  if (! console[method]) {
-    method = 'log';
-  }
-  if (! console[method].apply) {
-    // On Fennec I'm getting problems with console[method].apply
-    console.log(args);
-  } else {
-    console[method].apply(console, args);
-  }
-}
 
 function expandRange(range) {
   /* Given a range object, return
@@ -2328,7 +2432,7 @@ function splitTextBetween(el, start, end) {
 
 function keys(obj, sort) {
   var result = [];
-  for (i in obj) {
+  for (var i in obj) {
     result.push(i);
   }
   if (sort) {
@@ -2357,7 +2461,7 @@ function diffRepr(data) {
     } else if (name.substr(0, 6) == 'delete') {
       result += name + '(' + elId + ')';
     } else {
-      result += name + '(' + elId + ')=' + data[i][2].length + '/' + parseInt(JSON.stringify(data[i][2]).length);
+      result += name + '(' + elId + ')=' + data[i][2].length + '/' + parseInt(JSON.stringify(data[i][2]).length, 10);
     }
   }
   return result;
@@ -2413,20 +2517,21 @@ TrafficTracker.prototype.updateDisplay = function () {
   var container = this.document.getElementById('jsmirror-traffic-tracking');
   var totalTime = (new Date()).getTime() - this.started;
   var rest = '';
+  var secs;
   for (var i=0; i<this.marks.length; i++) {
     var nextTime = this.marks[i+1] ? this.marks[i+1][1] : (new Date()).getTime();
     var time = nextTime - this.marks[i][1];
     var chars = this.marks[i][0];
-    var reason = this.marks[i][2] || '@' + parseInt(((new Date()).getTime() - this.started) / 1000);
+    var reason = this.marks[i][2] || '@' + parseInt(((new Date()).getTime() - this.started) / 1000, 10);
     rest += reason + '<br>\n';
     rest += '&nbsp;Data: ' + this.size(chars) + '<br>\n';
-    var secs = time / 1000;
+    secs = time / 1000;
     rest += '&nbsp;Rate: ' + this.size(chars / secs) + '/s <br>\n';
   }
-  var secs = totalTime / 1000;
+  secs = totalTime / 1000;
   container.innerHTML = (
     '&nbsp;Data: ' + this.size(this.total) + '<br>\n' +
-    '&nbsp;Time: ' + parseInt(totalTime/1000) + 'secs <br>\n' +
+    '&nbsp;Time: ' + parseInt(totalTime/1000, 10) + 'secs <br>\n' +
     '&nbsp;Rate: ' + this.size(this.total / secs) + '/s <br>\n' +
     rest);
 };
@@ -2436,7 +2541,7 @@ TrafficTracker.prototype.size = function (s) {
     return '0';
   }
   if (s < 2000) {
-    return parseInt(s) + 'b';
+    return parseInt(s, 10) + 'b';
   }
-  return parseInt(s/1000) + 'kb';
+  return parseInt(s/1000, 10) + 'kb';
 };

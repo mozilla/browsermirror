@@ -7,10 +7,14 @@
       div.block {
         margin-bottom: 1em;
       }
+      body {
+        background-color: #ddd;
+      }
     </style>
   </head>
   <body>
 
+<!--
 <div class="block">
 
   <span id="jsmirror-view"
@@ -24,6 +28,7 @@
         >&#10132;</span>
 
 </div>
+-->
 
 <div id="jsmirror-container">
 
@@ -32,6 +37,13 @@
     <span id="jsmirror-share-text" style="display: none">
       <label for="jsmirror-share-field">share this link (copied):</label>
     </span>
+
+    <div id="audio-chat-container" style="display: none">
+      <button id="audio-chat">talk</button>
+    </div>
+    <div id="audio-container" style="display: none">
+      <iframe id="audio-iframe"></iframe>
+    </div>
 
     <input type="text"
            id="jsmirror-share-field"
@@ -47,6 +59,7 @@
   </div>
 
   <div class="block">
+
     Chat:
     <div id="jsmirror-chat"></div>
     <input type="text"

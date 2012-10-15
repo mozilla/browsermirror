@@ -1,14 +1,86 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <!-- This page is the outer wrapper for the web-based (non-addon) view -->
   <meta charset="UTF-8">
   <title>Connecting...</title>
-  <script src="/static/network.js"></script>
-  <script src="/static/mirror.js"></script>
+  <script src="/static/logging.js"></script>
+  <script src="/static/channels.js"></script>
+  <script src="/static/rtc.js"></script>
   <script src="/static/share-html.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: sans-serif;
+      height: 100%;
+    }
+    #page {
+      position: fixed;
+      width: 100%;
+      height: 100%;
+      padding: 0;
+    }
+    #iframe-window {
+      height: 100%;
+      width: 100%;
+    }
+    table {
+      height: 100%;
+      border-collapse: collapse;
+      margin: 0;
+      padding: 0;
+    }
+    table td {
+      padding: 0;
+      margin: 0;
+      vertical-align: top;
+    }
+    #iframe-window {
+      border: 0;
+    }
+    #interface {
+      /* Should match the color in chat.html */
+      background-color: #ddd;
+      padding: 0.3em;
+      border-right: 1px solid #000;
+    }
+    #jsmirror-url-container {
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      overflow: hidden;
+      width: 11em;
+      margin-bottom: 0.5em;
+    }
+  </style>
 </head>
 <body>
 
-<h1 id="jsmirror-waiting">Waiting for remote computer to connect...</h1>
+<div id="page">
+
+<table style="height: 100%; width: 100%">
+  <tr>
+    <td id="interface" style="height: 100%; width: 12em">
+
+      <div>
+        Watching:
+      <div id="jsmirror-url-container">
+      <a href="#" target="_blank" id="jsmirror-url">waiting...</a>
+      </div>
+      </div>
+
+      <div id="audio-chat-container" style="display: none">
+        <button id="audio-chat">talk</button>
+      </div>
+      <div id="audio-container"></div>
+
+      Chat:<br>
+      <div id="jsmirror-chat"></div>
+      <input type="text" id="jsmirror-input" style="border: 1px solid #000; width: 100%">
+    </td>
+    <td id="iframe-container"><iframe id="iframe-window" src="/static/view-inner.html"></iframe></td>
+  </tr>
+</table>
+
+</div>
 
 </body></html>
