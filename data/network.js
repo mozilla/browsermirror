@@ -19,7 +19,15 @@ Connection.prototype = {
   POLL_TIME: 5000,
 
   setupConnection: function () {
-    if (typeof ProxySocket != "undefined") {
+    if (this.address == "iframe") {
+      this.socket = new PostMessageSocket();
+      this.socket.onopen = (function () {
+        this.flush();
+      }).bind(this);
+      this.socket.onmessage = (function (event) {
+        this.ondata([JSON.parse(event.data)]);
+      }).bind(this);
+    } else if (typeof ProxySocket != "undefined") {
       console.log('Using ProxySocket for connection to', this.address);
       this.socket = new ProxySocket(this.address);
       this.socket.onopen = (function () {
@@ -57,7 +65,8 @@ Connection.prototype = {
       this.schedulePoll();
       log(INFO, 'Setup XHR polling to', this.address);
     }
-    this.send({hello: true, isMaster: this.isMaster});
+    this.send({hello: true, isMaster: this.isMaster,
+               supportsWebRTC: supportsWebRTC()});
   },
 
   schedulePoll: function () {
@@ -136,4 +145,115 @@ Connection.prototype = {
     this.ondata(data.messages);
   }
 
+};
+
+function PostMessageSocket() {
+  window.addEventListener("message", this._receiveMessage.bind(this), false);
+  this._source = null;
+  this._sourceOrigin = null;
+  this.readyState = this.CONNECTING;
+}
+
+PostMessageSocket.prototype = {
+  onopen: null,
+  onmessage: null,
+  onclose: null,
+  _receiveMessage: function (event) {
+    if (! this._source) {
+      this._source = event.source;
+      this._sourceOrigin = event.origin;
+    } else if (this._sourceOrigin != event.origin) {
+      // This shouldn't happen
+      console.warn("Origin mismatch; original origin:", this._sourceOrigin,
+                   "message origin:", event.origin);
+      return;
+    }
+    if (event.data == "helloPostMessage") {
+      // Just a hello/ping
+      event.source.postMessage("helloPostMessage", event.origin);
+      if (this.onopen) {
+        this.onopen();
+      }
+      this.readyState = this.OPEN;
+      return;
+    }
+    if (this.onmessage) {
+      this.onmessage(event);
+    }
+  },
+  send: function (data) {
+    if (! this._source) {
+      throw 'The postMessage transport has not been initiated';
+    }
+    this._source.postMessage(data, this._sourceOrigin);
+  },
+  close: function () {
+    this.readyState = this.CLOSING;
+    this._source.postMessage("closed", this._sourceOrigin);
+  },
+  CONNECTING: 0,
+  OPEN: 1,
+  CLOSING: 2,
+  CLOSED: 3
+};
+
+function PostMessageOutgoing(iframe, sameOrigin) {
+  this._iframe = iframe;
+  if (sameOrigin) {
+    this._origin = location.protocol + '//' + location.host;
+  } else {
+    this._origin = null;
+  }
+  // FIXME: get host here?
+  this.readyState = this.OPENING;
+  this._iframe.contentWindow.addEventListener("message", this._receiveMessage.bind(this), false);
+  this._ping();
+}
+
+PostMessageOutgoing.prototype = {
+  onopen: null,
+  onmessage: null,
+
+  _ping: function () {
+    if (this.readyState == this.OPEN) {
+      return;
+    }
+    this._iframe.contentWindow.postMessage("helloPostMessage", "*");
+    this._timeout = setTimeout(this._ping.bind(this), 1000);
+  },
+
+  _receiveMessage: function (event) {
+    if (this._origin === null) {
+      this._origin = event.origin;
+    }
+    if (this._origin != event.origin) {
+      console.warn("Bad origin, expected:", this._origin, "got:", event.origin);
+      return;
+    }
+    if (event.data == "helloPostMessage") {
+      if (this._timeout) {
+        clearTimeout(this._timeout);
+        this._timeout = null;
+      }
+      if (this.onopen) {
+        this.onopen();
+      }
+    } else {
+      if (this.onmessage) {
+        this.onmessage(event);
+      }
+    }
+  },
+
+  send: function (data) {
+    if (typeof data == "object") {
+      data = JSON.stringify(data);
+    }
+    this._iframe.contentWindow.postMessage(data, this._origin || '*');
+  },
+
+  CONNECTING: 0,
+  OPEN: 1,
+  CLOSING: 2,
+  CLOSED: 3
 };
