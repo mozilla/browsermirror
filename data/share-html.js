@@ -87,23 +87,15 @@ window.addEventListener('load', function () {
 }, false);
 
 function displayMessage(message, here) {
-  var div;
-  if (typeof message == "string") {
-    div = document.createElement('div');
-    div.style.margin = '0';
-    div.style.padding = '2px';
-    div.style.borderBottom = '1px solid #888';
-    if (! here) {
-      div.style.backgroundColor = '#666';
-    }
-    div.appendChild(document.createTextNode(message));
+  var el = document.createElement('div');
+  el.className = 'chat-message';
+  if (here) {
+    el.className += ' chat-local';
   } else {
-    div = message;
-    if (! here) {
-      div.style.backgroundColor = '#666';
-    }
+    el.className += ' chat-remote';
   }
-  chatDiv.appendChild(div);
+  el.appendChild(document.createTextNode(message));
+  chatDiv.appendChild(el);
 }
 
 function setUrl(url) {
