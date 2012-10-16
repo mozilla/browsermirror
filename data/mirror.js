@@ -188,12 +188,11 @@ Base.prototype.updateScreenArrow = function () {
  * Master: the browser that is sending the screen
  */
 
-function Master(channel, shareUrl) {
+function Master(channel) {
   if (this === window) {
     throw 'You forgot new';
   }
   this.channel = channel;
-  this.shareUrl = shareUrl;
   this.elements = {};
   this.lastSentDoc = null;
   // FIXME: this is a hacky way of keeping the element list in sync with Freeze:
