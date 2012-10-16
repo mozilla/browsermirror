@@ -49,6 +49,12 @@ And must call:
 - onclose()/onopen() (not onmessage - instead _incoming)
 */
 
+if (typeof exports != "undefined" && typeof require != "undefined" &&
+    typeof setTimeout == "undefined") {
+  // In an addon context, need to import setTimeout
+  setTimeout = require("timers").setTimeout;
+  clearTimeout = require("timers").clearTimeout;
+}
 
 AbstractChannel.subclass = function (overrides) {
   var C = function () {
@@ -226,7 +232,14 @@ var PostMessageChannel = AbstractChannel.subclass({
     this.window = win;
     // FIXME: The distinction between this.window and window seems unimportant
     // in the case of postMessage
-    window.addEventListener("message", this._receiveMessage, false);
+    var w = this.window;
+    // In a Content context we add the listener to the local window
+    // object, but in the addon context we add the listener to some
+    // other window, like the one we were given:
+    if (typeof window != "undefined") {
+      w = window;
+    }
+    w.addEventListener("message", this._receiveMessage, false);
     if (! noSetup) {
       this._setupConnection();
     }

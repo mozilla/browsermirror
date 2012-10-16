@@ -32,6 +32,7 @@ function setupAudio(callback, audioEl, offer) {
   if (audioEl.tagName != "VIDEO") {
     // FIXME: add controls?
     var el = document.createElement("video");
+    el.style.width = '100%';
     audioEl.appendChild(el);
     audioEl = el;
   }
