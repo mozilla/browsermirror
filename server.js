@@ -79,10 +79,8 @@ wsServer.on('request', function(request) {
     for (var i=0; i<allConnections[id].length; i++) {
       var c = allConnections[id][i];
       if (c == connection) {
-        console.log('Skipping to ' + c.ID);
         continue;
       }
-      console.log('Sending to ' + c.ID);
       if (message.type === 'utf8') {
         c.sendUTF(message.utf8Data);
       } else if (message.type === 'binary') {
@@ -95,7 +93,7 @@ wsServer.on('request', function(request) {
     if (index != -1) {
       allConnections[id].splice(index, 1);
     }
-    console.log((new Date()) + ' Peer ' + connection.remoteAddress + ' disconnected.');
+    console.log((new Date()) + ' Peer ' + connection.remoteAddress + ' disconnected, ID: ' + connection.ID);
   });
 });
 
