@@ -4,10 +4,23 @@ var hub = location.pathname.replace(/\/*$/, '');
 var address = location.protocol + "//" + location.host + "/hub" + hub;
 var channel = new WebSocketChannel(address);
 var outgoing = new PostMessageChannel(null);
-outgoing.rawdata = true;
 outgoing.onmessage = function (data) {
+  if (data.local) {
+    processLocalMessage(data.local);
+    return;
+  }
   channel.send(data);
 };
+
+function processLocalMessage(message) {
+  if (message.chatMessage) {
+    displayMessage(message.chatMessage, message.local);
+  } else if (message.arrowUpdate) {
+    // FIXME: do this
+  } else {
+    console.warn("Unexpected local message:", message);
+  }
+}
 
 channel.send({hello: true, isMaster: false, supportsWebRTC: supportsWebRTC()});
 channel.onmessage = function (data) {
