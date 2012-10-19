@@ -3,8 +3,11 @@ var WebSocketRouter = require('websocket').router;
 var http = require('http');
 var static = require('node-static');
 var parseUrl = require('url').parse;
+var mime = require('./node_modules/node-static/lib/node-static/mime.js');
 
-var dataRoot = new static.Server(__dirname + '/data');
+mime.contentTypes['xpi'] = 'application/x-xpinstall';
+
+var dataRoot = new static.Server(__dirname + '/data', {cache: 7200});
 
 var server = http.createServer(function(request, response) {
     var url = parseUrl(request.url);
