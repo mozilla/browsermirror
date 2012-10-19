@@ -30,6 +30,10 @@ function log(level) {
     // On Fennec I'm getting problems with console[method].apply
     console.log(args);
   } else {
-    console[method].apply(console, args);
+    try {
+      console[method].apply(console, args);
+    } catch (e) {
+      console[method].apply(console, ["Could not log: " + e]);
+    }
   }
 }
