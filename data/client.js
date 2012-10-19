@@ -9,7 +9,7 @@ function Client(channel) {
   this.lastHref = null;
   this._changeEvent = this._changeEvent.bind(this);
   this._catchEvent = this._catchEvent.bind(this);
-  setInterval(this.sendStatus.bind(this), 1000);
+  this._sendStatusInterval = setInterval(this.sendStatus.bind(this), 1000);
   window.addEventListener("unload", this.onunload.bind(this), false);
   this._catchEvents();
 }
@@ -22,6 +22,7 @@ Client.prototype = {
       this.channel.send({local: {restart: true, queueMessages: [command]}});
       this.channel.close();
       this._reloading = true;
+      clearTimeout(this._sendStatusInterval);
       location.reload();
       return;
     }

@@ -671,7 +671,7 @@ function EchoProxy(from_, to_, prefix) {
       if (typeof data != "string") {
         data = JSON.stringify(data);
       }
-      to_.port.send(prefix + "SendData", data);
+      to_.port.emit(prefix + "SendData", data);
     }
   };
 }

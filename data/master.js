@@ -7,7 +7,7 @@ function Master(channel, document) {
   this.elements = {};
   // FIXME: this is a hacky way of keeping the element list in sync with Freeze:
   Freeze.elementTracker = this;
-  setInterval(binder(this.sendDoc, this), 5000);
+  setInterval(binder(this.sendDoc, this), 2000);
   //setInterval(this.updateScreenArrowIfScrolled.bind(this), 1200);
   // This gets rid of garbage elements in this.elements:
   setInterval(this.refreshElements.bind(this), 10000);
@@ -267,7 +267,7 @@ Master.prototype = {
         alert('Two computers are sending updates, everything will break!\n' +
               'The other computer is at: ' + (command.href || 'unknown'));
       }
-      this.lastSentDoc = this.sentRange = null;
+      this.lastSentDoc = this.lastSentDocData = this.sentRange = null;
       this.sendDoc();
     }
   },
