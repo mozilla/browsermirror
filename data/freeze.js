@@ -4,7 +4,8 @@ if (! window.Freeze) {
 
 Freeze.makeId = function () {
   return 'el' + (arguments.callee.counter++);
-}
+};
+
 // This makes it more sortable:
 Freeze.makeId.counter=1000;
 
@@ -90,7 +91,14 @@ Freeze.serializeDocument = function () {
   return result;
 };
 
+// FIXME: this is hacky:
 Freeze.elementTracker = {};
+
+Freeze.trackElement = function (el) {
+  var id = this.makeId();
+  el.jsmirrorId = id;
+  this.elementTracker.elements[id] = el;
+};
 
 Freeze.serializeElement = function (el, includeHTML) {
   /* Serializes a single element to a JSON object.
@@ -100,9 +108,7 @@ Freeze.serializeElement = function (el, includeHTML) {
      If includeHTML is true then an additional innerHTML item will be added to the end of each list
    */
   if (! el.jsmirrorId) {
-    el.jsmirrorId = this.makeId();
-    // FIXME: this is a hacky way of handling this:
-    this.elementTracker.elements[el.jsmirrorId] = el;
+    this.trackElement(el);
   }
   if (el.tagName == 'CANVAS') {
     return ['IMG', el.jsmirrorId, {src: el.toDataURL('image/png')}, []];
@@ -114,7 +120,7 @@ Freeze.serializeElement = function (el, includeHTML) {
     try {
       var html = this.staticHTML(el.contentWindow.document.documentElement);
     } catch (e) {
-      console.warn('Had to skip iframe for permission reasons:', e);
+      console.warn('Had to skip iframe for permission reasons:', e+'');
       // A placeholder for the iframe:
       return ['SPAN', el.jsmirrorId, {}, []];
     }
@@ -206,6 +212,65 @@ Freeze.serializeAttributes = function (el) {
   return attrs;
 };
 
+Freeze.compareAttributes = function (attrs, el) {
+  /* Returns true if serializeAttributes(el) would produce attrs */
+  var count = 0;
+  var tagName = el.tagName;
+  for (var i in attrs) {
+    if (! attrs.hasOwnProperty(i)) {
+      continue;
+    }
+    count++;
+    var value;
+    if (i == 'href' || i == 'src' || i == 'value') {
+      value = el[i];
+      if (! el.hasAttribute(i)) {
+        // This happens in particularly with a virtual "value" attribute
+        count--;
+      }
+    } else {
+      value = el.getAttribute(i);
+    }
+    if (value != attrs[i]) {
+      console.log('got diff in attributes', i);
+      return false;
+    }
+  }
+  var elAttrsLength = el.attributes.length;
+  if (elAttrsLength == count) {
+    return true;
+  }
+  // There might be "blocked" attributes
+  for (i=0; i<elAttrsLength; i++) {
+    var attr = el.attributes[i];
+    if (attr.name.substr(0, 2).toLowerCase() == 'on') {
+      count++;
+    }
+  }
+  return count == elAttrsLength;
+};
+
+Freeze.compareAttributes2 = function (attrs, el) {
+  var elAttrs = this.serializeAttributes(el);
+  var result = true;
+  for (var i in attrs) {
+    if (attrs[i] != elAttrs[i]) {
+      result = false;
+    }
+  }
+  for (var i in elAttrs) {
+    if (attrs[i] != elAttrs[i]) {
+      result = false;
+    }
+  }
+  var otherResult = this.compareAttributes(attrs, el);
+  if (result != otherResult) {
+    console.log('Disagreement', el.tagName, result, otherResult);
+  }
+  return result;
+};
+
+
 Freeze.htmlQuote = function (s) {
   /* Does minimal quoting of a string for embedding as a literal in HTML */
   if (! s) {
@@ -215,13 +280,13 @@ Freeze.htmlQuote = function (s) {
     return s;
   }
   return s.replace(/&/g, "&amp;").replace(/</g, '&lt;').replace(/"/g, "&quot;");
-}
+};
 
 Freeze.encodeData = function (content_type, data) {
   /* Encodes the given data as a data: URL */
   // FIXME: utf8?
   return 'data:' + content_type + ';base64,' + btoa(data);
-}
+};
 
 Freeze.staticHTML = function (el) {
   /* Converts the element to static HTML, dropping anything that isn't static */
@@ -235,7 +300,7 @@ Freeze.staticHTML = function (el) {
       var html = this.staticHTML(el.contentWindow.document.documentElement);
       replSrc = this.encodeData('text/html', html);
     } catch (e) {
-      console.warn('Had to skip iframe for permission reasons:', e);
+      console.warn('Had to skip iframe for permission reasons:', e+'');
     }
   }
   var s = '<' + el.tagName;
@@ -264,7 +329,7 @@ Freeze.staticHTML = function (el) {
     s += '</' + el.tagName + '>';
   }
   return s;
-}
+};
 
 Freeze.getAttributes = function (el) {
   var result = [];
@@ -285,7 +350,7 @@ Freeze.getAttributes = function (el) {
     }
   }
   return result;
-}
+};
 
 Freeze.TEXT_NODE = document.TEXT_NODE;
 Freeze.ELEMENT_NODE = document.ELEMENT_NODE;
@@ -308,4 +373,4 @@ Freeze.staticChildren = function (el) {
     }
   }
   return s;
-}
+};

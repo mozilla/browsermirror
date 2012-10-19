@@ -17,6 +17,7 @@ var server = http.createServer(function(request, response) {
       filename = '/view.html';
     }
     if (filename) {
+      // FIXME: doesn't handle 404s (stops entire server):
       dataRoot.serveFile(filename, 200, {}, request, response);
       return;
     }

@@ -6,7 +6,7 @@ channel.onmessage = function (data) {
       el.innerHTML = 'Connected, waiting for document...';
     }
   }
-  mirror.processCommand(data);
+  client.processCommand(data);
 };
 
-var mirror = new Mirror(channel);
+var client = new Client(channel);

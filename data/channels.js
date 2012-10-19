@@ -199,6 +199,8 @@ var WebSocketChannel = AbstractChannel.subclass({
 /* Sends TO a window or iframe */
 var PostMessageChannel = AbstractChannel.subclass({
   _pingPollPeriod: 100, // milliseconds
+  _pingPollIncrease: 100, // +100 milliseconds for each failure
+  _pingMax: 2000, // up to a max of 2000 milliseconds
 
   constructor: function (win, expectedOrigin) {
     this.expectedOrigin = expectedOrigin;
@@ -207,6 +209,7 @@ var PostMessageChannel = AbstractChannel.subclass({
     if (win) {
       this.bindWindow(win, true);
     }
+    this._pingFailures = 0;
   },
 
   toString: function () {
@@ -225,6 +228,8 @@ var PostMessageChannel = AbstractChannel.subclass({
   bindWindow: function (win, noSetup) {
     if (this.window) {
       this.close();
+      // Though we deinitialized everything, we aren't exactly closed:
+      this.closed = false;
     }
     if (win && win.contentWindow) {
       win = win.contentWindow;
@@ -254,15 +259,15 @@ var PostMessageChannel = AbstractChannel.subclass({
   },
 
   _setupConnection: function () {
-    if (this.closed || this._pingReceived) {
+    if (this.closed || this._pingReceived || (! this.window)) {
       return;
     }
-    if (! this.window) {
-      return;
-    }
-    this.window.postMessage("hello", this.expectedOrigin || "*");
+    this._pingFailures++;
+    this._send("hello");
     // We'll keep sending ping messages until we get a reply
-    this._pingTimeout = setTimeout(this._setupConnection.bind(this), this._pingPollPeriod);
+    var time = this._pingPollPeriod + (this._pingPollIncrease * this._pingFailures);
+    time = time > this._pingPollMax ? this._pingPollMax : time;
+    this._pingTimeout = setTimeout(this._setupConnection.bind(this), time);
   },
 
   _receiveMessage: function (event) {
@@ -294,6 +299,10 @@ var PostMessageChannel = AbstractChannel.subclass({
 
   close: function () {
     this.closed = true;
+    this._pingReceived = false;
+    if (this._pingTimeout) {
+      clearTimeout(this._pingTimeout);
+    }
     window.removeEventListener("message", this._receiveMessage, false);
     if (this.onclose) {
       this.onclose();
@@ -339,7 +348,8 @@ var PostMessageIncomingChannel = AbstractChannel.subclass({
   },
 
   _receiveMessage: function (event) {
-    if (this.expectedOrigin && event.origin != this.expectedOrigin) {
+    if (this.expectedOrigin && this.expectedOrigin != "*" &&
+        event.origin != this.expectedOrigin) {
       // FIXME: Maybe not worth mentioning?
       console.info("Expected message from", this.expectedOrigin,
                    "but got message from", event.origin);
@@ -353,7 +363,174 @@ var PostMessageIncomingChannel = AbstractChannel.subclass({
     }
     if (event.data == "hello") {
       // Just a ping
-      event.source.postMessage("hello", this.expectedOrigin);
+      this.source.postMessage("hello", this.expectedOrigin);
+      return;
+    }
+    this._incoming(event.data);
+  },
+
+  close: function () {
+    this.closed = true;
+    window.removeEventListener("message", this._receiveMessage, false);
+    if (this._pingTimeout) {
+      clearTimeout(this._pingTimeout);
+    }
+    if (this.onclose) {
+      this.onclose();
+    }
+  }
+
+});
+
+
+var CHROME_CHANNEL_EVENT = "BrowserMirrorChromeChannel";
+
+/* Sends TO a window or iframe, from a CHROME window.  Windows and
+iframes can't talk back to a chrome window, so we use another
+approach */
+var ChromePostMessageChannel = AbstractChannel.subclass({
+  _pingPollPeriod: 100, // milliseconds
+
+  constructor: function (win, doc, expectedOrigin) {
+    this.expectedOrigin = expectedOrigin;
+    this._pingReceived = false;
+    this.doc = doc;
+    if (win) {
+      this.bindWindow(win, true);
+    }
+    this._receiveMessage = this._receiveMessage.bind(this);
+    this.doc.addEventListener(CHROME_CHANNEL_EVENT, this._receiveMessage, false, true);
+  },
+
+  toString: function () {
+    var s = '[ChromePostMessageChannel';
+    if (this.window) {
+      s += ' to window ' + this.window;
+    } else {
+      s += ' not bound to a window';
+    }
+    if (this.window && ! this._pingReceived) {
+      s += ' still establishing';
+    }
+    return s + ']';
+  },
+
+  bindWindow: function (win, noSetup) {
+    if (this.window) {
+      this.close();
+    }
+    if (win && win.contentWindow) {
+      win = win.contentWindow;
+    }
+    this.window = win;
+    if (! noSetup) {
+      this._setupConnection();
+    }
+  },
+
+  _send: function (data) {
+    console.log('sending message to window:', data);
+    this.window.postMessage(data, this.expectedOrigin || "*");
+  },
+
+  _ready: function () {
+    return this.window && this.pingReceived;
+  },
+
+  _setupConnection: function () {
+    if (this.closed || this._pingReceived || (! this.window)) {
+      return;
+    }
+    this._send("hello");
+    this._pingTimeout = setTimeout(this._setupConnection.bind(this), this._pingPollPeriod);
+  },
+
+  _receiveMessage: function (event) {
+    var el = event.target;
+    var data = el.getAttribute('data-payload');
+    console.log('got chrome message', data, el);
+    el.parentNode.removeChild(el);
+    el = null;
+    if (data == "hello") {
+      this._pingReceived = true;
+      if (this._pingTimeout) {
+        clearTimeout(this._pingTimeout);
+        this._pingTimeout = null;
+      }
+      if (this.onopen) {
+        this.onopen();
+      }
+      this._flush();
+      return;
+    }
+    self._incoming(data);
+  },
+
+  close: function () {
+    this.closed = true;
+    this.doc.remoteEventListener(CHROME_CHANNEL_EVENT, this._receiveMessage, false, true);
+    if (this._pingTimeout) {
+      clearTimeout(this._pingTimeout);
+    }
+    if (this.onclose) {
+      this.onclose();
+    }
+  }
+
+});
+
+if (typeof exports != "undefined") {
+  exports.ChromePostMessageChannel = ChromePostMessageChannel;
+}
+
+
+/* Handles message FROM an exterior CHROME window/parent, with events
+for handling the inability of these windows to talk to their chrome
+parents */
+var ChromePostMessageIncomingChannel = AbstractChannel.subclass({
+
+  constructor: function () {
+    this._receiveMessage = this._receiveMessage.bind(this);
+    window.addEventListener("message", this._receiveMessage, false);
+  },
+
+  toString: function () {
+    var s = '[ChromePostMessageIncomingChannel]';
+    return s;
+  },
+
+  _ready: function () {
+    return !! document.head;
+  },
+
+  _send: function (data) {
+    var event = document.createEvent("Events");
+    event.initEvent(CHROME_CHANNEL_EVENT, true, false);
+    var el = document.createElement("BrowserMirrorPayloadElement");
+    el.setAttribute("data-payload", data);
+    document.head.appendChild(el);
+    el.dispatchEvent(event);
+  },
+
+  _setupConnection: function () {
+  },
+
+  _receiveMessage: function (event) {
+    if (event.source || event.origin) {
+      // If either of these are set, it's not a postMessage from a
+      // Chrome window
+      // FIXME: warn?  Or an option to warn in this case?
+      return;
+    }
+    if (event.data == "hello") {
+      if (this._ready()) {
+        this._send("hello");
+      } else {
+        // Wait a moment to respond
+        setTimeout((function () {
+          this._receiveMessage(event);
+        }).bind(this), 100);
+      }
       return;
     }
     this._incoming(event.data);
