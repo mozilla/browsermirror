@@ -1,4 +1,6 @@
 function supportsWebRTC() {
+  // FIXME: this is to disable the currently-nonfunctioning RTC support
+  return false;
   return !!(
     (window.mozRTCPeerConnection || window.RTCPeerConnection) &&
     (navigator.mozGetUserMedia || navigator.getUserMedia)
