@@ -378,7 +378,15 @@ Client.prototype = {
         continue;
       }
       attrLength++;
-      el.setAttribute(i, attrs[i]);
+      try {
+        el.setAttribute(i, attrs[i]);
+      } catch (e) {
+        // Sometimes this can cause an error, like:
+        //   INVALID_CHARACTER_ERR: DOM Exception 5
+        // Usually this is an invalid upstream HTML, but so be it - nothing
+        // we can do about it here.
+        console.warn("Attribute setting error:", i, attrs[i], e);
+      }
       if (i == 'value') {
         el.value = attrs[i];
       }
