@@ -4,9 +4,12 @@
   <!-- This page is the outer wrapper for the web-based (non-addon) view -->
   <meta charset="UTF-8">
   <title>Connecting...</title>
-  <script src="/static/logging.js"></script>
-  <script src="/static/channels.js"></script>
-  <script src="/static/rtc.js"></script>
+  <link id="favicon" rel="shortcut icon" href="favicon.ico">
+  <script src="https://login.persona.org/include.js"></script>
+  <script src="/data/logging.js"></script>
+  <script src="/data/channels.js"></script>
+  <script src="/data/rtc.js"></script>
+  <script src="/data/user.js"></script>
   <script src="/static/share-html.js"></script>
   <style>
     body {
@@ -72,6 +75,12 @@
       <div id="jsmirror-url-container">
       <a href="#" target="_blank" id="jsmirror-url">waiting...</a>
       </div>
+      </div>
+
+      <div style="display: none">
+        <!-- FIXME: disabled until I can get logins working on both sides -->
+        <div><a href="#" id="login">-</a></div>
+        <div id="user-list"></div>
       </div>
 
       <div id="audio-chat-container" style="display: none">

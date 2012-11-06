@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+ <head>
+  <meta charset="UTF-8">
+  <title>Browser Mirror</title>
+  <link href="/static/bootstrap/css/bootstrap.css" rel="stylesheet">
+  <link href="/static/homepage.css" rel="stylesheet">
+  <style>
+    section {
+      padding-top: 60px;
+    }
+  </style>
+ </head>
+ <body>
+
+<div class="navbar navbar-fixed-top">
+ <div class="navbar-inner">
+  <div class="container">
+    <a href="/" class="brand">Browser Mirror</a>
+    <ul class="nav">
+     <li><a href="https://github.com/mozilla/browsermirror">Github</a></li>
+     <li><a href="https://github.com/mozilla/browsermirror/issues">issues</a></li>
+     <li class="dropdown" id="toc-menu">
+      <a class="dropdown-toggle" data-toggle="dropdown" href="#toc-menu">Table Of Contents
+       <b class="caret"></b></a>
+      <ul class="dropdown-menu">
+       <li><a href="#intro">About Browser Mirror</a></li>
+       <li><a href="#tech">How Does It Work?</a></li>
+       <li><a href="#development">Development / The Code</a></li>
+      </ul>
+     </li>
+     <li><a href="/static/browsermirror.xpi">Install the Add-on!</a></li>
+    </ul>
+  </div> <!-- .container -->
+ </div> <!-- .navbar-inner -->
+</div> <!-- .navbar -->
+
+<div class="container">
+
+<section id="intro">
+
+<h1>Browser Mirror</h1>
+
+<p>Browser Mirror is a way of sharing your browser session with anyone
+else.  You share your session and you'll get a link which you can give
+to another person &mdash; they'll see what you see, and (with limits)
+they can interact with the page at the same time as you.</p>
+
+<h1>Getting Started</h2>
+
+<p> Install the Firefox addon (no restart required!): </p>
+
+<p style="padding: 0 2em 0 2em">
+  <a class="btn btn-primary" href="/static/browsermirror.xpi">Install The Addon</a>
+</p>
+
+<p> After installation you should see a link in the bottom right of
+your browser, like this: <img src="/static/share-button-screenshot.png"> </p>
+
+<p> If you don't see that you might need to display the <strong>Add-on
+bar</strong>, you can do this with <strong>View &gt; Toolbars &gt;
+Add-on bar</strong>
+(<a href="http://support.mozilla.org/en-US/kb/add-on-bar-quick-access-to-add-ons">read
+more here</a>).</p>
+
+<p> Once you've installed the addon, go to a page,
+click <span style="text-decoration: underline; color:
+#00f">share</span>, and a sidebar will open up &mdash; as long as the
+sidebar is open you are sharing your session (though maybe no one else
+is looking!)  To invite someone to actually look at what you are
+doing, click <strong>share</strong> to get a link: </p>
+
+<p> <img src="/static/share-link-screenshot.png"> </p>
+
+<p> Click it: </p>
+
+<p> <img src="/static/share-link-2-screenshot.png"> </p>
+
+<p> Give that link to a friend, and they will see what's in your
+tab. (Each time you click <span style="text-decoration: underline;
+color: #00f">share</span> it will give you a new link.) </p>
+
+</section>
+
+<section id="tech">
+
+<h2>How Does It Work?</h2>
+
+<p> Browser Mirror is different than a typical screen-sharing
+applications.  Instead of sharing the <em>image</em> that you see on
+the screen, it shares the <em>page</em> that you are looking at.  It's
+also not the same as sharing the URL &mdash; the other person
+sees <em>what</em> you are looking at, they aren't just following
+along with the same URL.  So you can look at a private page on an
+intranet, or something that is bound to a session, like airplane
+ticket purchases.  As you continue to surf, the other person will
+follow along.  If you are using a dynamic application, the other
+person will see the results as you interact with the application. </p>
+
+<p> In most cases you can both interact with forms, though in some
+fancier applications your friend may not be able to use the full
+functionality of some parts of the page. </p>
+
+<p> In technical terms, what Browser Mirror does is send the DOM to
+the other person.  That is more or less the same as sending the HTML
+of the page &mdash; but without any of the special information the
+server uses to identify you, like cookies or Javascript state.  Only
+the <em>visible</em> parts of the page are sent.  This is somewhat
+like a screen sharing program, which sends pixels instead of DOM
+elements.  Currently the elements are captured at regular intervals,
+and diffs are sent to cut down on traffic. </p>
+
+</section>
+
+<section id="development">
+
+<h2>The Code</h2>
+
+<p> The code is hosted on <a
+href="https://github.com/mozilla/browsermirror">github</a>.</p>
+
+<p> The code contains a Firefox Add-on, a simple Node.js server that
+handles communication between the two browsers, and a web site for the
+client to view. </p>
+
+</section>
+
+ </body>
+
+</html>

@@ -1,0 +1,20 @@
+div {
+    margin-bottom: 1em;
+}
+
+h1, h2, h3 {
+    border-bottom: 2px solid #000;
+    margin-bottom: 0.8em;
+}
+
+ul, ol {
+    margin: 1em 0 1em 2em;
+}
+
+li {
+    margin-bottom: 1em;
+}
+
+.monospace {
+    font-family: monospace;
+}

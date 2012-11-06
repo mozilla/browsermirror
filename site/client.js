@@ -4,7 +4,8 @@ in the view-iframe.html frame. */
 var ELEMENT_NODE = document.ELEMENT_NODE;
 var TEXT_NODE = document.TEXT_NODE;
 
-function Client(channel) {
+function Client(channel, clientId) {
+  this.clientId = clientId;
   this.channel = channel;
   this.lastHref = null;
   this._changeEvent = this._changeEvent.bind(this);
@@ -16,10 +17,16 @@ function Client(channel) {
 
 Client.prototype = {
 
+  send: function (msg) {
+    msg.clientId = this.clientId;
+    this.channel.send(msg);
+  },
+
   processCommand: function (command) {
     var href = command.href || (command.doc && command.doc.href);
+    var docChange = false;
     if (href && this.lastHref && href != this.lastHref) {
-      this.channel.send({local: {restart: true, queueMessages: [command]}});
+      this.send({local: {restart: true, queueMessages: [command]}});
       this.channel.close();
       this._reloading = true;
       clearTimeout(this._sendStatusInterval);
@@ -28,15 +35,18 @@ Client.prototype = {
     }
     if (command.hello && command.isMaster) {
       this.updateWaiting('Connected, receiving document...');
-      this.channel.send({helloBack: true, supportsWebRTC: supportsWebRTC()});
+      this.send({helloBack: true, supportsWebRTC: supportsWebRTC()});
     }
     if (command.doc) {
+      docChange = true;
       this.processDoc(command.doc);
     }
     if (command.updates) {
+      docChange = true;
       this.processUpdates(command.updates);
     }
     if (command.diffs) {
+      docChange = true;
       this.removeRange();
       this.processDiffs(command.diffs);
       if (this.lastRange && (! command.range)) {
@@ -52,7 +62,6 @@ Client.prototype = {
     }
     if (command.range && command.range.start) {
       this.processRange(command.range);
-
     }
     if (command.range === null) {
       this.removeRange();
@@ -63,6 +72,30 @@ Client.prototype = {
       if (this.updateScreen) {
         this.updateScreen(command.screen);
       }
+    }
+    if (docChange) {
+      this.processDocChange();
+    }
+  },
+
+  processDocChange: function () {
+    var title = document.title;
+    if (title != this._lastTitle && this.ontitlechange) {
+      this._lastTitle = title;
+      this.ontitlechange(title);
+    }
+    var links = document.getElementsByTagName('link');
+    var linkLen = links.length;
+    var linkHref = null;
+    for (var i=0; i<linkLen; i++) {
+      if (links[i].getAttribute("rel").indexOf("icon") != -1) {
+        var linkhref = links[i].href;
+        break;
+      }
+    }
+    if (linkHref != this._lastLinkHref && this.onfaviconchange) {
+      this._lastLinkHref = linkHref;
+      this.onfaviconchange(linkHref);
     }
   },
 
@@ -119,11 +152,11 @@ Client.prototype = {
       var screenJson = JSON.stringify(screen);
       if ((! this.sentScreen) || this.sentScreen != screenJson) {
         data.screen = screen;
-        this.sendScreen = screenJson;
+        this.sentScreen = screenJson;
       }
     }
     if (data.screen || data.range) {
-      this.channel.send(data);
+      this.send(data);
     }
   },
 
@@ -401,7 +434,15 @@ Client.prototype = {
     el = document.createElement(tagName);
     for (var i in attrs) {
       if (attrs.hasOwnProperty(i)) {
-        el.setAttribute(i, attrs[i]);
+        try {
+          el.setAttribute(i, attrs[i]);
+        } catch (e) {
+          // Sometimes this can cause an error, like:
+          //   INVALID_CHARACTER_ERR: DOM Exception 5
+          // Usually this is an invalid upstream HTML, but so be it - nothing
+          // we can do about it here.
+          console.warn("Attribute setting error:", i, attrs[i], e);
+        }
       }
     }
     for (var i=0; i<children.length; i++) {
@@ -493,7 +534,7 @@ Client.prototype = {
     }
     var serialized = this.serializeEvent(event);
     console.log('sending event', serialized);
-    this.channel.send({event: serialized});
+    this.send({event: serialized});
     var tagName = event.target.tagName;
     if ((event.type == 'click' || event.type == 'keypress') &&
         (tagName == 'INPUT' || tagName == 'TEXTAREA' || tagName == 'SELECT')) {
@@ -527,7 +568,7 @@ Client.prototype = {
   ],
 
   _changeEvent: function (event) {
-    this.channel.send({
+    this.send({
       change: {
         target: event.target.jsmirrorId,
         value: event.target.value
@@ -540,7 +581,7 @@ Client.prototype = {
       // When we are expecting to unload, it's fine and we needn't tell the parent
       return;
     }
-    this.channel.send({local: {unload: true}});
+    this.send({local: {unload: true}});
     this.channel.close();
   }
 

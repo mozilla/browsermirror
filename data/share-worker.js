@@ -10,10 +10,12 @@ var myId = parseInt(Math.random()*1000, 10);
 console.log('Starting up worker', myId);
 
 self.port.on("StartShare", function () {
-  channel = new PortProxyChannel();
+  channel = new PortChannel(self.port);
+  console.log('Starting channel:', channel.toString());
   channel.send({hello: true, isMaster: true, supportsWebRTC: supportsWebRTC()});
   master = new Master(channel, unsafeWindow.document);
   channel.onmessage = function (data) {
+    /*
     if (data.chatMessage) {
       self.port.emit("LocalMessage", data);
     }
@@ -24,6 +26,7 @@ self.port.on("StartShare", function () {
     if (data.hello) {
       self.port.emit("LocalMessage", {connected: data.clientId});
     }
+    */
     if (data.rtcOffer || data.rtcAnswer) {
       console.log('Got remote offer');
       self.port.emit("RTC", data);

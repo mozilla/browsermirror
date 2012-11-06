@@ -32,6 +32,14 @@ is not fully established yet.
 
 */
 
+if (typeof exports != "undefined" && typeof require != "undefined" &&
+    typeof setTimeout == "undefined") {
+  // In an addon context, need to import setTimeout
+  setTimeout = require("timers").setTimeout;
+  clearTimeout = require("timers").clearTimeout;
+}
+
+
 function AbstractChannel() {
   this.constructor.apply(this, arguments);
 }
@@ -48,13 +56,6 @@ And must call:
 - ._incoming(string) on incoming message
 - onclose()/onopen() (not onmessage - instead _incoming)
 */
-
-if (typeof exports != "undefined" && typeof require != "undefined" &&
-    typeof setTimeout == "undefined") {
-  // In an addon context, need to import setTimeout
-  setTimeout = require("timers").setTimeout;
-  clearTimeout = require("timers").clearTimeout;
-}
 
 AbstractChannel.subclass = function (overrides) {
   var C = function () {
@@ -311,10 +312,6 @@ var PostMessageChannel = AbstractChannel.subclass({
 
 });
 
-if (typeof exports != "undefined") {
-  exports.PostMessageChannel = PostMessageChannel;
-}
-
 
 /* Handles message FROM an exterior window/parent */
 var PostMessageIncomingChannel = AbstractChannel.subclass({
@@ -429,7 +426,6 @@ var ChromePostMessageChannel = AbstractChannel.subclass({
   },
 
   _send: function (data) {
-    console.log('sending message to window:', data);
     this.window.postMessage(data, this.expectedOrigin || "*");
   },
 
@@ -448,7 +444,6 @@ var ChromePostMessageChannel = AbstractChannel.subclass({
   _receiveMessage: function (event) {
     var el = event.target;
     var data = el.getAttribute('data-payload');
-    console.log('got chrome message', data, el);
     el.parentNode.removeChild(el);
     el = null;
     if (data == "hello") {
@@ -478,10 +473,6 @@ var ChromePostMessageChannel = AbstractChannel.subclass({
   }
 
 });
-
-if (typeof exports != "undefined") {
-  exports.ChromePostMessageChannel = ChromePostMessageChannel;
-}
 
 
 /* Handles message FROM an exterior CHROME window/parent, with events
@@ -546,9 +537,82 @@ var ChromePostMessageIncomingChannel = AbstractChannel.subclass({
 
 });
 
-if (typeof exports != "undefined") {
-  exports.PostMessageIncomingChannel = PostMessageIncomingChannel;
-}
+/* Sends messages over a port.  The "port" is the port object, such as self.port
+   or worker.port; it must implement emit, on, and removeListener.
+
+   Closed and Opened events are sent across the port to indicate when
+  the remote channel is setup or closed.
+*/
+var PortChannel = AbstractChannel.subclass({
+
+  constructor: function (port, prefix) {
+    this.prefix = prefix || '';
+    this.port = port;
+    this._incoming = this._incoming.bind(this);
+    this._remoteOpened = this._remoteOpened.bind(this);
+    this._remoteClosed = this._remoteClosed.bind(this);
+    this._gotHello = false;
+  },
+
+  toString: function () {
+    var s = '[PortChannel';
+    s += ' port: ' + this.port.toString();
+    if (this.prefix) {
+      s += ' prefix: "' + this.prefix + '"';
+    }
+    s += ']';
+    return s;
+  },
+
+  _setupConnection: function () {
+    this.port.on(this.prefix + 'Send', this._incoming);
+    this.port.on(this.prefix + 'Opened', this._remoteOpened);
+    this.port.on(this.prefix + 'Closed', this._remoteClosed);
+    this.port.emit("Opened");
+  },
+
+  destroy: function () {
+    this.port.removeListener(this.prefix + 'Send', this._incoming);
+    this.port.removeListener(this.prefix + 'Opened', this._remoteOpened);
+    this.port.removeListener(this.prefix + 'Closed', this._remoteClosed);
+  },
+
+  _ready: function () {
+    // FIXME: is any kind of ping necessary?
+    return this._gotHello;
+  },
+
+  _remoteOpened: function (helloBack) {
+    this._gotHello = true;
+    if (! helloBack) {
+      // We'll say hello back, in case our original hello was lost
+      this.port.emit("Opened", true);
+    }
+    if (this.onopen) {
+      this.onopen();
+    }
+    this._flush();
+  },
+
+  _remoteClosed: function () {
+    this._gotHello = false;
+    if (this.onclose) {
+      this.onclose();
+    }
+    this.destroy();
+  },
+
+  close: function () {
+    this.port.emit("Closed");
+    this._remoteClosed();
+  },
+
+  _send: function (s) {
+    this.port.emit("Send", s);
+  }
+
+});
+
 
 /* This proxies to another channel located in another process, via port.emit/port.on */
 var PortProxyChannel = AbstractChannel.subclass({
@@ -562,7 +626,7 @@ var PortProxyChannel = AbstractChannel.subclass({
 
   toString: function () {
     var s = '[PortProxyChannel';
-    if (this.self !== self) {
+    if (typeof self == "undefined" || this.self !== self) {
       s += ' bound to self ' + this.self;
     }
     if (this.prefix) {
@@ -586,7 +650,11 @@ var PortProxyChannel = AbstractChannel.subclass({
   },
 
   close: function () {
-    this.self.port.emit(this.prefix + "Close");
+    try {
+      this.self.port.emit(this.prefix + "Close");
+    } catch (e) {
+      console.log('Error on close', e, e.name);
+    }
     this.self.port.removeListener(this.prefix + "IncomingData", this._incoming);
     this.self.port.removeListener(this.prefix + "Opened", this._remoteOpened);
     this.closed = true;
@@ -604,7 +672,6 @@ var PortProxyChannel = AbstractChannel.subclass({
   }
 
 });
-
 
 /* Will handle incoming requests for the given channel over a port.
 Returns a function that tears down this connection.  The teardown
@@ -678,4 +745,9 @@ function EchoProxy(from_, to_, prefix) {
 
 if (typeof exports != "undefined") {
   exports.EchoProxy = EchoProxy;
+  exports.PostMessageChannel = PostMessageChannel;
+  exports.ChromePostMessageChannel = ChromePostMessageChannel;
+  exports.PostMessageIncomingChannel = PostMessageIncomingChannel;
+  exports.PortChannel = PortChannel;
+  exports.PortProxyChannel = PortProxyChannel;
 }

@@ -120,7 +120,7 @@ Freeze.serializeElement = function (el, includeHTML) {
     try {
       var html = this.staticHTML(el.contentWindow.document.documentElement);
     } catch (e) {
-      console.warn('Had to skip iframe for permission reasons:', e+'');
+      console.warn('Had to skip iframe for permission reasons:', e+'', 'src:', el.src);
       // A placeholder for the iframe:
       return ['SPAN', el.jsmirrorId, {}, []];
     }
@@ -325,7 +325,7 @@ Freeze.staticHTML = function (el) {
   }
   s += '>';
   if (! this.voidElements[el.tagName]) {
-    s += staticChildren(el);
+    s += this.staticChildren(el);
     s += '</' + el.tagName + '>';
   }
   return s;
