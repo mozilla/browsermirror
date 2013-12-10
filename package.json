@@ -3,20 +3,20 @@
     "license": "MPL 1.1/GPL 2.0/LGPL 2.1",
     "author": "Ian Bicking <ianb@mozilla.com>",
     "version": "0.1",
-    "fullName": "Browser Mirror",
-    "id": "jid1-TppibpBYlnPBrQ",
+    "fullName": "Browser Mirror/Shared Space",
+    "id": "jid1-TppibpBYlnPBrQ2",
     "description": "Browser session sharing",
     "preferences": [{
       "name": "server",
       "title": "Echo/Server URL",
       "description": "This is where to find the server for echoing messages",
       "type": "string",
-      "value": "https://browsermirror.ianbicking.org"
+      "value": "https://hub.togetherjs.com"
     },
     {
-      "name": "stickyShareId",
-      "title": "Sticky share ID",
-      "description": "For testing, you can force your shared session to always be at the same URL.  Enter a value like email@example.com",
+      "name": "groupId",
+      "title": "Group ID",
+      "description": "The name of your group, everyone using the same group name will share a session",
       "type": "string",
       "value": ""
     }]
